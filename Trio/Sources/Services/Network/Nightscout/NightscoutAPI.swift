@@ -295,6 +295,51 @@ extension NightscoutAPI {
         }
     }
 
+    /// Sweet Miranda bridge: treatments carrying fields Nightscout does not model (smKind, smChanges…).
+    func fetchRawTreatments(query: [URLQueryItem]) async throws -> [[String: Any]] {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.port = url.port
+        components.path = Config.treatmentsPath
+        components.queryItems = query
+
+        guard let requestURL = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: requestURL)
+        request.timeoutInterval = Config.timeout
+        if let secret = secret {
+            request.addValue(secret.sha1(), forHTTPHeaderField: "api-secret")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+    }
+
+    /// Sweet Miranda bridge: one raw treatment document, posted as-is.
+    func uploadRawTreatment(_ document: [String: Any]) async throws {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.port = url.port
+        components.path = Config.treatmentsPath
+
+        guard let requestURL = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: requestURL)
+        request.timeoutInterval = Config.timeout
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let secret = secret {
+            request.addValue(secret.sha1(), forHTTPHeaderField: "api-secret")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [document])
+        request.httpMethod = "POST"
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
     func uploadTreatments(_ treatments: [NightscoutTreatment]) async throws {
         var components = URLComponents()
         components.scheme = url.scheme

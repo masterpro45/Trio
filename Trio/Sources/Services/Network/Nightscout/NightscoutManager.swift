@@ -20,6 +20,9 @@ protocol NightscoutManager: GlucoseSource {
     func uploadNoteTreatment(note: String) async
     func importSettings() async -> ScheduledNightscoutProfile?
     var cgmURL: URL? { get }
+    /// Sweet Miranda settings bridge (see Services/SweetMiranda).
+    func sweetMirandaFetchPending() async -> [[String: Any]]
+    func sweetMirandaUpload(document: [String: Any]) async -> Bool
 }
 
 final class BaseNightscoutManager: NightscoutManager, Injectable {
@@ -1545,5 +1548,37 @@ extension BaseNightscoutManager {
 
         // If no match is found, append TDD at the end of the original reason string.
         return reason + tddString
+    }
+}
+
+// MARK: - Sweet Miranda settings bridge
+
+extension BaseNightscoutManager {
+    /// Pending proposals written by the Sweet Miranda bridge. Empty when Nightscout is not configured.
+    func sweetMirandaFetchPending() async -> [[String: Any]] {
+        guard let nightscout = nightscoutAPI, isNetworkReachable else { return [] }
+        do {
+            return try await nightscout.fetchRawTreatments(query: [
+                URLQueryItem(name: "find[eventType]", value: SweetMiranda.eventType),
+                URLQueryItem(name: "find[smKind]", value: SweetMiranda.Kind.proposal.rawValue),
+                URLQueryItem(name: "find[smStatus]", value: SweetMiranda.Status.pending.rawValue),
+                URLQueryItem(name: "count", value: "10")
+            ])
+        } catch {
+            debug(.remoteControl, "SweetMiranda: fetch pending failed \(error)")
+            return []
+        }
+    }
+
+    /// A snapshot or a result, posted as one raw treatment.
+    func sweetMirandaUpload(document: [String: Any]) async -> Bool {
+        guard let nightscout = nightscoutAPI, isNetworkReachable else { return false }
+        do {
+            try await nightscout.uploadRawTreatment(document)
+            return true
+        } catch {
+            debug(.remoteControl, "SweetMiranda: upload failed \(error)")
+            return false
+        }
     }
 }
