@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A5E8BBCAD791A8C52C8AD8B /* SweetMirandaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5EDECA370E162653F9A48C /* SweetMirandaModels.swift */; };
+		5A5EBA24E737B2855278BC72 /* SweetMirandaSettingsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E8964242559EE5133A143 /* SweetMirandaSettingsCatalog.swift */; };
+		5A5E679A7BF2BB8A537283D7 /* SweetMirandaSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E56417D5A9D5C52E89B17 /* SweetMirandaSyncManager.swift */; };
+		5A5E1522F53682675CA39C6B /* SweetMirandaProposalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */; };
 		041D1E995A6AE92E9289DC49 /* TreatmentsDataFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A7CA8C10C4403D4BBFA7 /* TreatmentsDataFlow.swift */; };
 		0D9A5E34A899219C5C4CDFAF /* HistoryStateModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9455FA2D92E77A6C4AFED8A3 /* HistoryStateModel.swift */; };
 		110AEDE32C5193D200615CC9 /* BolusIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110AEDE02C5193D100615CC9 /* BolusIntent.swift */; };
@@ -1104,6 +1108,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A5EDECA370E162653F9A48C /* SweetMirandaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaModels.swift; sourceTree = "<group>"; };
+		5A5E8964242559EE5133A143 /* SweetMirandaSettingsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSettingsCatalog.swift; sourceTree = "<group>"; };
+		5A5E56417D5A9D5C52E89B17 /* SweetMirandaSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSyncManager.swift; sourceTree = "<group>"; };
+		5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaProposalView.swift; sourceTree = "<group>"; };
 		10E61A0885164081B57C357C /* NightscoutUploadSerializer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightscoutUploadSerializer.swift; sourceTree = "<group>"; };
 		110AEDE02C5193D100615CC9 /* BolusIntent.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BolusIntent.swift; sourceTree = "<group>"; };
 		110AEDE12C5193D100615CC9 /* BolusIntentRequest.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BolusIntentRequest.swift; sourceTree = "<group>"; };
@@ -2169,6 +2177,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5A5E6B209A12D33858928C86 /* SweetMiranda */ = {
+			isa = PBXGroup;
+			children = (
+				5A5EDECA370E162653F9A48C /* SweetMirandaModels.swift */,
+				5A5E8964242559EE5133A143 /* SweetMirandaSettingsCatalog.swift */,
+				5A5E56417D5A9D5C52E89B17 /* SweetMirandaSyncManager.swift */,
+				5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */,
+			);
+			path = SweetMiranda;
+			sourceTree = "<group>";
+		};
 		0610F7D6D2EC00E3BA1569F0 /* ConfigEditor */ = {
 			isa = PBXGroup;
 			children = (
@@ -2573,6 +2592,7 @@
 		3811DE9125C9D88200A708ED /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5A5E6B209A12D33858928C86 /* SweetMiranda */,
 				B015AFF22E600000000D7351 /* Adjustments */,
 				BD1179262F4E22C100F90001 /* Alerts */,
 				3811DE9225C9D88200A708ED /* Appearance */,
@@ -5204,6 +5224,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A5E8BBCAD791A8C52C8AD8B /* SweetMirandaModels.swift in Sources */,
+				5A5EBA24E737B2855278BC72 /* SweetMirandaSettingsCatalog.swift in Sources */,
+				5A5E679A7BF2BB8A537283D7 /* SweetMirandaSyncManager.swift in Sources */,
+				5A5E1522F53682675CA39C6B /* SweetMirandaProposalView.swift in Sources */,
 				DD5DC9F12CF3D97C00AB8703 /* AdjustmentsStateModel+Overrides.swift in Sources */,
 				3811DE2325C9D48300A708ED /* MainDataFlow.swift in Sources */,
 				C2A0A42F2CE03131003B98E8 /* ConstantValues.swift in Sources */,
