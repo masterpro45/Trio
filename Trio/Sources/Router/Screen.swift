@@ -62,7 +62,9 @@ extension Screen {
         case .loading:
             ProgressView()
         case .home:
-            Home.RootView(resolver: resolver)
+            // Sweet Miranda: her own home screen when she has turned it on. Stock
+            // Home.RootView is untouched and always one toggle away.
+            SweetMirandaHomeSwitch(resolver: resolver)
         case .settings:
             Settings.RootView(resolver: resolver)
         case let .configEditor(file):

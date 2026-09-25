@@ -39,8 +39,30 @@ extension UserInterfaceSettings {
             return formatter
         }
 
+        /// Mirrors SweetMirandaSkin.shared so the row reads and writes the same stored flag.
+        private var sweetMirandaSkinEnabled: Binding<Bool> {
+            Binding(
+                get: { SweetMirandaSkin.shared.isEnabled },
+                set: { SweetMirandaSkin.shared.isEnabled = $0 }
+            )
+        }
+
         var body: some View {
             List {
+                Section {
+                    Toggle(isOn: $sweetMirandaSkinEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Miranda's home screen")
+                            Text("Big pink EAT + DOSE button, alerts and history beside it, and status circles that fade as the pod and sensor run out. Turn it off for the standard Trio screen.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(minHeight: 44)
+                } header: {
+                    Text("Sweet Miranda")
+                }
+
                 Section(
                     header: Text("General Appearance"),
                     content: {
