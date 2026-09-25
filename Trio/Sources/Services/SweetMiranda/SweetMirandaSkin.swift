@@ -2,9 +2,6 @@ import LoopKit
 import SwiftUI
 import Swinject
 
-/// Namespace for Miranda's own screens, mirroring Trio's `enum Home { }` module pattern.
-enum SweetMiranda {}
-
 /// Sweet Miranda's own look, and the switch that turns it on.
 ///
 /// Miranda asked for a home screen she actually wants to open: pink, one big button to eat
