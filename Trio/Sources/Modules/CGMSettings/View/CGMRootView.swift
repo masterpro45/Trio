@@ -20,6 +20,14 @@ extension CGMSettings {
         @Environment(\.colorScheme) var colorScheme
         @Environment(AppState.self) var appState
 
+        /// Right-hand summary on the Sensor change row: days left, or a prompt to set it.
+        private var sensorSessionSummary: String {
+            let session = SweetMirandaSensorSession.shared
+            guard let expires = session.expiresAt else { return String(localized: "Not set") }
+            guard expires > Date() else { return String(localized: "Expired") }
+            return SensorRemainingTimeFormatter.format(until: expires) + " " + String(localized: "left")
+        }
+
         var body: some View {
             List {
                 Section(
@@ -137,6 +145,22 @@ extension CGMSettings {
                         )
                     }
                 )
+
+                // Sweet Miranda: with Nightscout as the CGM, Trio has no way to learn when
+                // the sensor went on, so she tells it here and the home countdown follows.
+                Section(header: Text("Sensor change")) {
+                    NavigationLink {
+                        SweetMirandaSensorSessionView()
+                    } label: {
+                        HStack {
+                            Text("Sensor change date")
+                            Spacer()
+                            Text(sensorSessionSummary)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                }
             }
             .scrollContentBackground(.hidden).background(appState.trioBackgroundColor(for: colorScheme))
             .onAppear(perform: configureView)

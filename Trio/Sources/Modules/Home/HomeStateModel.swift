@@ -547,7 +547,12 @@ extension Home {
                             )
                         }
                     } else {
+                        // Sweet Miranda: the Nightscout CGM path publishes no lifecycle at
+                        // all, so the arc would stay blank. Fall back to the sensor start
+                        // date she entered by hand. A source that reports its own lifecycle
+                        // still wins, so this needs no removal if the CGM ever changes.
                         progress = source?.cgmProgressHighlight.value
+                            ?? SweetMirandaSensorSession.shared.lifecycleProgress()
                         displayState = source?.cgmDisplayState.value
                     }
                     self.cgmProgressHighlight = progress
@@ -855,6 +860,12 @@ extension Home {
         ) -> Date? {
             if let sim = glucoseSource as? GlucoseSimulatorSource {
                 return sim.simulatedSensorExpiresAt
+            }
+            // Sweet Miranda: with Nightscout as the CGM there is no CGMManager to ask,
+            // so the hand-entered session is the only clock there is. Every
+            // manager-reported date below still takes precedence.
+            if manager == nil, let entered = SweetMirandaSensorSession.shared.expiresAt {
+                return entered
             }
             guard let manager else { return nil }
             // Once a G7 enters grace period, `sensorExpiresAt` is in the past
