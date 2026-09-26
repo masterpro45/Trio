@@ -433,6 +433,11 @@ extension Treatments {
             .onAppear {
                 configureView {
                     state.isActive = true
+                    // Sweet Miranda: carbs she picked on her Eat screen, handed over once.
+                    if let meal = SweetMirandaMealHandoff.take() {
+                        state.carbs = meal.carbs
+                        if state.note.isEmpty { state.note = meal.note }
+                    }
                     Task { @MainActor in
                         state.insulinCalculated = await state.calculateInsulin()
                     }

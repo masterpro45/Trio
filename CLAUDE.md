@@ -6,10 +6,11 @@ This fork builds Trio for Miranda, who runs it on her iPhone with an Omnipod. It
 
 - `main` tracks upstream `nightscout/Trio` releases (currently v1.0.1, `c0160aea`). Don't commit Sweet Miranda work here.
 - `sweetmiranda-101` is Sweet Miranda rebased onto v1.0.1. The older `sweetmiranda` branch was built on a 9/17 dev snapshot (`cfba1ff`); don't build from it.
-- `claude/approver-token-char-count-75brkh` is `sweetmiranda-101` plus the signed-expiry fix (1.0.5). Merge it into `sweetmiranda-101` before the next build from that branch, or the fix is lost.
+- `claude/approver-token-char-count-75brkh` (the signed-expiry fix, 1.0.5) is merged into `sweetmiranda-101` as of build 10.
 - Builds run through **Actions → Build Trio** (`build_trio.yml`), started manually on the branch to build. A build takes about 25 minutes and uploads to TestFlight itself. Fastlane sets the build number to the latest TestFlight build + 1.
 - Bump `APP_VERSION` in `Config.xcconfig` for every build that goes to her phone, so Nightscout devicestatus and TestFlight show which build she runs. Leave `APP_DEV_VERSION` alone.
-- The cloud container has no Swift compiler. The CI build is the only compile check, so read Swift diffs carefully before pushing.
+- The cloud container has no Swift compiler. Wilson's Mac mini can compile and run the Simulator (`~/Developer/Trio`; strip the Watch app from a scratch pbxproj; ad-hoc sign with `CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM=`). The SwiftFormat build phase rewrites sources: commit what it changes.
+- Screens opened from her skin need what stock HomeRootView provides: `SettingsSearchHighlight` in the environment (Settings, Glucose Alarms crash without it), and Treatments must open via `showModal(for: .treatmentView)` so `hideModal()` can close it.
 
 | Build | Version | Branch | Notes |
 |---|---|---|---|
@@ -18,6 +19,7 @@ This fork builds Trio for Miranda, who runs it on her iPhone with an Omnipod. It
 | 7 | 1.0.3 | `sweetmiranda-101` | Rebased onto v1.0.1. |
 | 8 | 1.0.4 | `sweetmiranda-101` | Face ID approvals from a caregiver phone. |
 | 9 | 1.0.5 | `claude/approver-token-char-count-75brkh` | Remote approval requires a signed `smExpires`. Installed 2026-09-26. |
+| 10 | 1.0.6 | `sweetmiranda-101` | Her screen: "How many carbs?" first (typed or 10 USDA favorites), correction-only behind a 2 s hold, units left shows 50+ for the Omnipod sentinel, EAT + DOSE text fixed, Alerts/Settings no longer crash (skin provides `SettingsSearchHighlight`), treatment screen opened through the router. |
 
 ## Where the code is
 
