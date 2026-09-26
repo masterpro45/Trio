@@ -3,7 +3,9 @@ import Foundation
 import UIKit
 
 enum Icon_: String, CaseIterable, Identifiable {
-    case primary = "trioBlack"
+    /// Sweet Miranda: Luna, the family schnoodle, is the app icon (source: design/luna_icon.svg).
+    case primary = "luna"
+    case trioBlack
     case trioWhiteShadow
     case trioColorBG
     case trioWhite

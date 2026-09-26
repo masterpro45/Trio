@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF4D9D"/>
+      <stop offset="1" stop-color="#B96BFF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fur" cx="0.42" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.7" stop-color="#F7F2EE"/>
+      <stop offset="1" stop-color="#E9DFD8"/>
+    </radialGradient>
+    <radialGradient id="ear" cx="0.4" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#FBF7F3"/>
+      <stop offset="1" stop-color="#E2D6CC"/>
+    </radialGradient>
+    <radialGradient id="beard" cx="0.5" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#FFF8EE"/>
+      <stop offset="1" stop-color="#EFDCC2"/>
+    </radialGradient>
+    <radialGradient id="eye" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#5A3A2E"/>
+      <stop offset="1" stop-color="#1C110D"/>
+    </radialGradient>
+    <linearGradient id="bow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF6FB0"/>
+      <stop offset="1" stop-color="#E81E7E"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#5B0F3E" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="470" r="470" fill="url(#glow)"/>
+  <g fill="#FFFFFF" opacity="0.55">
+    <path d="M170 190 l10 26 26 10 -26 10 -10 26 -10 -26 -26 -10 26 -10z"/>
+    <path d="M858 250 l8 20 20 8 -20 8 -8 20 -8 -20 -20 -8 20 -8z"/>
+    <path d="M150 800 l7 18 18 7 -18 7 -7 18 -7 -18 -18 -7 18 -7z"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <!-- floppy ears -->
+    <g fill="url(#ear)" stroke="#D9C9BD" stroke-width="6">
+      <path d="M268 360 C190 380 150 470 160 580 C168 670 205 740 262 752 C318 764 342 700 340 630 C338 540 330 430 268 360 Z"/>
+      <path d="M756 360 C834 380 874 470 864 580 C856 670 819 740 762 752 C706 764 682 700 684 630 C686 540 694 430 756 360 Z"/>
+    </g>
+    <g fill="none" stroke="#E0D2C6" stroke-width="7" stroke-linecap="round">
+      <path d="M205 500 C200 560 210 620 232 680"/>
+      <path d="M245 470 C240 540 250 610 270 700"/>
+      <path d="M819 500 C824 560 814 620 792 680"/>
+      <path d="M779 470 C784 540 774 610 754 700"/>
+    </g>
+
+    <!-- fluffy head: a cloud of curls -->
+    <g fill="url(#fur)" stroke="#E4D7CC" stroke-width="5">
+      <circle cx="512" cy="480" r="262"/>
+      <circle cx="400" cy="262" r="78"/>
+      <circle cx="512" cy="236" r="84"/>
+      <circle cx="624" cy="262" r="78"/>
+      <circle cx="314" cy="330" r="72"/>
+      <circle cx="710" cy="330" r="72"/>
+      <circle cx="276" cy="440" r="66"/>
+      <circle cx="748" cy="440" r="66"/>
+    </g>
+    <circle cx="512" cy="480" r="258" fill="url(#fur)"/>
+    <!-- curl marks on the top of the head -->
+    <g fill="none" stroke="#E6DAD0" stroke-width="7" stroke-linecap="round">
+      <path d="M440 300 q18 -22 38 0"/>
+      <path d="M520 280 q18 -22 38 0"/>
+      <path d="M370 360 q18 -22 38 0"/>
+      <path d="M600 330 q18 -22 38 0"/>
+      <path d="M660 390 q16 -20 34 0"/>
+    </g>
+
+    <!-- schnauzer beard / muzzle: a fluffy cloud, scalloped at the bottom -->
+    <g fill="url(#beard)">
+      <ellipse cx="512" cy="640" rx="150" ry="118"/>
+      <circle cx="400" cy="690" r="62"/>
+      <circle cx="624" cy="690" r="62"/>
+      <circle cx="440" cy="752" r="58"/>
+      <circle cx="584" cy="752" r="58"/>
+      <circle cx="512" cy="790" r="62"/>
+    </g>
+    <g fill="none" stroke="#E9D6BD" stroke-width="6" stroke-linecap="round">
+      <path d="M430 720 q-6 26 8 48"/>
+      <path d="M512 742 q-4 30 4 60"/>
+      <path d="M594 720 q6 26 -8 48"/>
+      <path d="M470 770 q0 20 10 34"/>
+      <path d="M554 770 q0 20 -10 34"/>
+    </g>
+    <!-- bushy schnauzer eyebrows: soft tufts, no outline -->
+    <g fill="#FFFFFF">
+      <circle cx="372" cy="398" r="30"/><circle cx="410" cy="382" r="32"/><circle cx="452" cy="384" r="28"/>
+      <circle cx="652" cy="398" r="30"/><circle cx="614" cy="382" r="32"/><circle cx="572" cy="384" r="28"/>
+    </g>
+    <g fill="none" stroke="#E7DBD1" stroke-width="6" stroke-linecap="round">
+      <path d="M356 414 q40 -24 96 -14"/>
+      <path d="M668 414 q-40 -24 -96 -14"/>
+    </g>
+    <!-- eyes -->
+    <circle cx="425" cy="478" r="54" fill="url(#eye)"/>
+    <circle cx="599" cy="478" r="54" fill="url(#eye)"/>
+    <circle cx="407" cy="458" r="19" fill="#FFFFFF"/>
+    <circle cx="581" cy="458" r="19" fill="#FFFFFF"/>
+    <circle cx="442" cy="500" r="8" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="616" cy="500" r="8" fill="#FFFFFF" opacity="0.9"/>
+
+    <!-- rosy cheeks -->
+    <ellipse cx="352" cy="566" rx="46" ry="28" fill="#FF7FB2" opacity="0.55"/>
+    <ellipse cx="672" cy="566" rx="46" ry="28" fill="#FF7FB2" opacity="0.55"/>
+
+    <!-- button nose -->
+    <path d="M512 612 C470 612 452 586 460 566 C468 546 494 540 512 540 C530 540 556 546 564 566 C572 586 554 612 512 612 Z" fill="#1E1412"/>
+    <ellipse cx="494" cy="560" rx="16" ry="9" fill="#FFFFFF" opacity="0.55"/>
+
+    <!-- smile + tongue -->
+    <path d="M470 640 Q490 668 512 646 Q534 668 554 640" fill="none" stroke="#6B3F36" stroke-width="9" stroke-linecap="round"/>
+    <path d="M492 658 Q512 704 532 658 Q512 668 492 658 Z" fill="#FF6FA5" stroke="#E0457F" stroke-width="4"/>
+
+    <!-- pink bow on her left ear -->
+    <g transform="translate(700 262) rotate(18)">
+      <path d="M0 0 C-30 -60 -110 -60 -100 0 C-110 60 -30 60 0 0 Z" fill="url(#bow)" stroke="#C4146A" stroke-width="6"/>
+      <path d="M0 0 C30 -60 110 -60 100 0 C110 60 30 60 0 0 Z" fill="url(#bow)" stroke="#C4146A" stroke-width="6"/>
+      <circle cx="0" cy="0" r="26" fill="#FF4D9D" stroke="#C4146A" stroke-width="6"/>
+      <ellipse cx="-58" cy="-18" rx="16" ry="8" fill="#FFFFFF" opacity="0.5"/>
+      <ellipse cx="58" cy="-18" rx="16" ry="8" fill="#FFFFFF" opacity="0.5"/>
+    </g>
+  </g>
+</svg>
