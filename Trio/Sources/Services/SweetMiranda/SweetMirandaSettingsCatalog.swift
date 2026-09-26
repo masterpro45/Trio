@@ -88,6 +88,7 @@ enum SweetMirandaSettingsCatalog {
         let pumpName: String
         let supportedBasalRates: [Decimal]?
         let remoteControlEnabled: Bool
+        let approvers: [SMApprover]
     }
 
     /// The full picture, as plain JSON.
@@ -110,6 +111,7 @@ enum SweetMirandaSettingsCatalog {
             "targets": s.targets.targets
                 .map { ["start": $0.start, "offset": $0.offset, "low": dbl($0.low), "high": dbl($0.high)] },
             "remoteControlEnabled": s.remoteControlEnabled,
+            "approvers": s.approvers.map { ["keyId": $0.keyId, "name": $0.name, "addedAt": SMDates.string($0.addedAt)] },
             "app": [
                 "version": Bundle.main.appDevVersion ?? "unknown",
                 "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
@@ -201,6 +203,29 @@ enum SweetMirandaSettingsCatalog {
                         unit: "mg/dL"
                     ),
                     to: describeSchedule(entries.map { ($0.0, $0.1) }, unit: "mg/dL")
+                ))
+            } else if key == SweetMiranda.Key.approverAdd {
+                let a = try SMApprovers.parseAdd(raw)
+                guard !current.approvers.contains(where: { $0.keyId == a.keyId }) else {
+                    throw SMError.invalid("\(a.name) is already an approver")
+                }
+                lines.append(SMChangeLine(
+                    id: key,
+                    group: "Approvers",
+                    label: "Approve settings with Face ID from another phone",
+                    from: "Not allowed",
+                    to: "\(a.name) · key \(a.keyId.prefix(8))"
+                ))
+            } else if key == SweetMiranda.Key.approverRemove {
+                guard let keyId = raw as? String, let a = current.approvers.first(where: { $0.keyId == keyId }) else {
+                    throw SMError.invalid("That approver is not on this phone")
+                }
+                lines.append(SMChangeLine(
+                    id: key,
+                    group: "Approvers",
+                    label: "Stop Face ID approvals from",
+                    from: "\(a.name) · key \(a.keyId.prefix(8))",
+                    to: "Removed"
                 ))
             } else {
                 throw SMError.invalid("Unknown change key \(key)")

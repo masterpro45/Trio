@@ -10,7 +10,7 @@ struct SweetMirandaProposalView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var grouped: [(String, [SMChangeLine])] {
-        let order = ["Therapy", "Limits", "Algorithm", "Trio"]
+        let order = ["Approvers", "Therapy", "Limits", "Algorithm", "Trio"]
         let dict = Dictionary(grouping: lines, by: \.group)
         return order.compactMap { g in dict[g].map { (g, $0) } }
     }
@@ -109,5 +109,41 @@ struct SweetMirandaProposalView: View {
         }
         .interactiveDismissDisabled(manager.busy)
         .onDisappear { manager.sheetDismissed() }
+    }
+}
+
+/// Settings ▸ User Interface ▸ Sweet Miranda: the caregivers' phones that may approve with Face ID.
+struct SweetMirandaApproversSection: View {
+    @ObservedObject var manager: BaseSweetMirandaSyncManager
+
+    var body: some View {
+        Section {
+            if manager.approvers.isEmpty {
+                Text("None. Only this phone can approve settings from Sweet Miranda.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(manager.approvers) { a in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(a.name)
+                        Text("Key \(a.keyId.prefix(8)) · added \(a.addedAt.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Remove", role: .destructive) {
+                        Task { _ = await manager.removeApprover(a.keyId) }
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        } header: {
+            Text("Face ID approvers")
+        } footer: {
+            Text(
+                "These phones can approve Sweet Miranda settings with their owner's Face ID; this phone gets a notification each time. Adding one always needs this phone. Removing one here takes effect immediately."
+            )
+        }
     }
 }

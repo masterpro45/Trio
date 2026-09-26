@@ -23,6 +23,7 @@ protocol NightscoutManager: GlucoseSource {
     /// Sweet Miranda settings bridge (see Services/SweetMiranda).
     func sweetMirandaFetchPending() async -> [[String: Any]]
     func sweetMirandaUpload(document: [String: Any]) async -> Bool
+    func sweetMirandaFetchApprovals(proposalId: String) async -> [[String: Any]]
 }
 
 final class BaseNightscoutManager: NightscoutManager, Injectable {
@@ -1566,6 +1567,22 @@ extension BaseNightscoutManager {
             ])
         } catch {
             debug(.remoteControl, "SweetMiranda: fetch pending failed \(error)")
+            return []
+        }
+    }
+
+    /// Face ID approvals from a caregiver's phone for one proposal (LoopFollow writes them).
+    func sweetMirandaFetchApprovals(proposalId: String) async -> [[String: Any]] {
+        guard let nightscout = nightscoutAPI, isNetworkReachable else { return [] }
+        do {
+            return try await nightscout.fetchRawTreatments(query: [
+                URLQueryItem(name: "find[eventType]", value: SweetMiranda.eventType),
+                URLQueryItem(name: "find[smKind]", value: SweetMiranda.Kind.approval.rawValue),
+                URLQueryItem(name: "find[smId]", value: proposalId),
+                URLQueryItem(name: "count", value: "5")
+            ])
+        } catch {
+            debug(.remoteControl, "SweetMiranda: fetch approvals failed \(error)")
             return []
         }
     }

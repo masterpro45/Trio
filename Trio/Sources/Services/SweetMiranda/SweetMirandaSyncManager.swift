@@ -15,7 +15,8 @@ import UserNotifications
 /// bridge on the family's server copies it to the dashboard and removes it again.
 ///
 /// Proposals: after every loop cycle (and every 5 minutes in the foreground) Trio asks
-/// Nightscout for pending proposals. A new one raises a local notification and, when the app
+/// Nightscout for pending proposals. A proposal signed with Face ID on a registered approver's
+/// own phone (LoopFollow) is applied without the sheet; approver changes never are. A new one raises a local notification and, when the app
 /// is on screen, the approval sheet. Approve → Face ID → validated changes are applied the
 /// same way the in-app editors apply them (pump sync first for basal and limits) → a "result"
 /// treatment reports what happened. Decline → a "result" too. Unanswered proposals expire
@@ -56,6 +57,11 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @Persisted(key: "SweetMiranda.lastSnapshotHash") private var lastSnapshotHash: String = ""
     @Persisted(key: "SweetMiranda.lastSnapshotAt") private var lastSnapshotAt: Date = .distantPast
     @Persisted(key: "SweetMiranda.handledProposalIds") private var handledIds: [String] = []
+    /// Caregivers' phones whose Face ID may approve proposals. Changed only on this phone.
+    @Persisted(key: "SweetMiranda.approvers") private(set) var approvers: [SMApprover] = []
+
+    /// For the Settings row that lists and removes approvers (the manager is a container singleton).
+    private(set) weak static var current: BaseSweetMirandaSyncManager?
 
     init(resolver: Resolver) {
         injectServices(resolver)
@@ -66,6 +72,7 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     func start() {
         guard !started else { return }
         started = true
+        Self.current = self
         broadcaster.register(SettingsObserver.self, observer: self)
         broadcaster.register(PreferencesObserver.self, observer: self)
         broadcaster.register(BasalProfileObserver.self, observer: self)
@@ -126,6 +133,17 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
                 await self.report(next, status: .expired, message: "Expired before anyone answered on the phone", applied: nil)
                 self.markHandled(next.id)
                 return
+            }
+            // Face ID on a registered approver's own phone counts as approval — never for approver changes.
+            if !next.touchesApprovers, !self.approvers.isEmpty {
+                for doc in await self.nightscoutManager.sweetMirandaFetchApprovals(proposalId: next.id) {
+                    guard let approval = SMApproval(document: doc) else { continue }
+                    if let who = SMApprovers.verify(approval, for: next, approvers: self.approvers) {
+                        await self.applyRemote(next, by: who)
+                        return
+                    }
+                    debug(.remoteControl, "SweetMiranda: ignored an approval for \(next.id) that did not verify")
+                }
             }
             await MainActor.run {
                 guard self.pending?.id != next.id else { return }
@@ -194,18 +212,10 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
                 // 1. the device owner, and nobody else
                 let ok = try await unlockManager.unlock()
                 guard ok else { throw SMError.notAuthenticated }
-                // 2. re-validate against what the phone runs NOW (it may have changed since the sheet opened)
-                let current = sources()
-                _ = try SweetMirandaSettingsCatalog.validate(changes: p.changes, against: current)
-                // 3. apply, pump first
-                let applied = try await apply(p.changes, current: current)
+                // 2 + 3. re-validate against what the phone runs NOW, apply pump first
+                let (applied, _) = try await applyValidated(p)
                 // 4. tell everyone
-                uploadSnapshotIfChanged(force: true)
-                let hash = (try? SweetMirandaSettingsCatalog.hash(of: SweetMirandaSettingsCatalog.snapshot(sources()))) ?? ""
-                await report(p, status: .applied, message: "Applied on the phone after Face ID", applied: applied, hash: hash)
-                markHandled(p.id)
-                await nightscoutManager
-                    .uploadNoteTreatment(note: "Sweet Miranda settings applied: \(applied.keys.sorted().joined(separator: ", "))")
+                await finishApplied(p, applied: applied, message: "Applied on the phone after Face ID")
                 await MainActor.run {
                     self.busy = false
                     self.clearPending(p)
@@ -237,9 +247,73 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @MainActor private func clearPending(_ p: SMProposal) {
         if pending?.id == p.id { pending = nil
             pendingLines = [] }
-        router.mainSecondaryModalView.send(nil)
+        if sheetShown { router.mainSecondaryModalView.send(nil) }
         sheetShown = false
         checkNow()
+    }
+
+    // MARK: - Approved elsewhere / approvers
+
+    /// Re-validates against what the phone runs NOW (it may have changed since the proposal was
+    /// written) and applies, pump first. Returns what was applied and the human lines.
+    @MainActor private func applyValidated(_ p: SMProposal) async throws -> ([String: Any], [SMChangeLine]) {
+        let current = sources()
+        let lines = try SweetMirandaSettingsCatalog.validate(changes: p.changes, against: current)
+        let applied = try await apply(p.changes, current: current)
+        return (applied, lines)
+    }
+
+    /// Fresh snapshot, the result for the dashboard, a note in Nightscout.
+    @MainActor private func finishApplied(_ p: SMProposal, applied: [String: Any], message: String) async {
+        uploadSnapshotIfChanged(force: true)
+        let hash = (try? SweetMirandaSettingsCatalog.hash(of: SweetMirandaSettingsCatalog.snapshot(sources()))) ?? ""
+        await report(p, status: .applied, message: message, applied: applied, hash: hash)
+        markHandled(p.id)
+        await nightscoutManager
+            .uploadNoteTreatment(note: "Sweet Miranda settings applied: \(applied.keys.sorted().joined(separator: ", "))")
+    }
+
+    /// A registered approver signed exactly this proposal with Face ID on their own phone.
+    @MainActor private func applyRemote(_ p: SMProposal, by approver: SMApprover) async {
+        guard !busy, !handledIds.contains(p.id) else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let (applied, lines) = try await applyValidated(p)
+            await finishApplied(p, applied: applied, message: "Applied after Face ID on \(approver.name)")
+            notifyApplied(by: approver, lines: lines)
+        } catch {
+            let message = error.localizedDescription
+            debug(.remoteControl, "SweetMiranda: approved on \(approver.name) but not applied — \(message)")
+            await report(p, status: .failed, message: "Approved on \(approver.name) but not applied: \(message)", applied: nil)
+            markHandled(p.id)
+        }
+        clearPending(p)
+    }
+
+    /// So the person holding this phone always knows her settings changed, and who approved it.
+    private func notifyApplied(by approver: SMApprover, lines: [SMChangeLine]) {
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "Your settings were updated")
+        content.body = "\(approver.name) approved with Face ID: " + lines.map(\.label).joined(separator: ", ")
+        content.sound = .default
+        let req = UNNotificationRequest(identifier: "SweetMiranda.applied.\(UUID().uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req) { error in
+            if let error { debug(.remoteControl, "SweetMiranda: notification failed \(error)") }
+        }
+    }
+
+    /// Removes an approver from this phone right away (e.g. a lost phone). Needs this phone's owner.
+    @MainActor func removeApprover(_ keyId: String) async -> Bool {
+        do {
+            guard try await unlockManager.unlock() else { return false }
+        } catch { return false }
+        guard let gone = approvers.first(where: { $0.keyId == keyId }) else { return false }
+        approvers = approvers.filter { $0.keyId != keyId }
+        objectWillChange.send()
+        uploadSnapshotIfChanged(force: true)
+        await nightscoutManager.uploadNoteTreatment(note: "Sweet Miranda approver removed on the phone: \(gone.name)")
+        return true
     }
 
     private func markHandled(_ id: String) {
@@ -303,6 +377,17 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             let new = try SweetMirandaSettingsCatalog.newSettings(settingsManager.settings, changes: changes)
             settingsManager.settings = new
             for (k, v) in changes where k.hasPrefix(SweetMiranda.Key.settingsPrefix) { applied[k] = v }
+        }
+
+        // Approvers last: only once every setting in the proposal went through.
+        if let raw = changes[SweetMiranda.Key.approverAdd] {
+            let a = try SMApprovers.parseAdd(raw)
+            approvers = approvers.filter { $0.keyId != a.keyId } + [a]
+            applied[SweetMiranda.Key.approverAdd] = ["keyId": a.keyId, "name": a.name]
+        }
+        if let keyId = changes[SweetMiranda.Key.approverRemove] as? String {
+            approvers = approvers.filter { $0.keyId != keyId }
+            applied[SweetMiranda.Key.approverRemove] = keyId
         }
 
         if applied.keys
@@ -444,7 +529,8 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
                 ?? BGTargets(units: .mgdL, userPreferredUnits: .mgdL, targets: []),
             pumpName: deviceManager.pumpName.value,
             supportedBasalRates: deviceManager.pumpManager?.supportedBasalRates.filter { $0 > 0 }.map { Decimal($0) },
-            remoteControlEnabled: UserDefaults.standard.bool(forKey: "isTrioRemoteControlEnabled")
+            remoteControlEnabled: UserDefaults.standard.bool(forKey: "isTrioRemoteControlEnabled"),
+            approvers: approvers
         )
     }
 }

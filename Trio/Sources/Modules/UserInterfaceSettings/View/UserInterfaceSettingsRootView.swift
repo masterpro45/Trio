@@ -65,6 +65,10 @@ extension UserInterfaceSettings {
                     Text("Sweet Miranda")
                 }
 
+                if let smManager = BaseSweetMirandaSyncManager.current {
+                    SweetMirandaApproversSection(manager: smManager)
+                }
+
                 Section(
                     header: Text("General Appearance"),
                     content: {
