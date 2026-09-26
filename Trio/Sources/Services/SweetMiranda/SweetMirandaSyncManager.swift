@@ -43,6 +43,9 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @Published private(set) var lastError: String?
 
     private let foregroundPoll: TimeInterval = 300
+    /// In the background the loop fires this after every cycle; never ask Nightscout more often than this.
+    private let backgroundMinInterval: TimeInterval = 240
+    private var lastCheckAt: Date = .distantPast
     private var pollTimer: Timer?
     private var snapshotDebounce: DispatchWorkItem?
     private var subscriptions = Set<AnyCancellable>()
@@ -98,12 +101,22 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
 
     // MARK: - Proposals in
 
+    /// Always called on the main thread (loop subject is received on main, timer and lifecycle are main).
     func checkNow() {
         guard started, !checking else { return }
+        let inBackground = UIApplication.shared.applicationState != .active
+        if inBackground, Date().timeIntervalSince(lastCheckAt) < backgroundMinInterval { return }
         checking = true
+        lastCheckAt = Date()
+        // Ask iOS for time to finish the request; if it runs out, end quietly — the loop must never wait on us.
+        let bgTask = SMBackgroundTask(name: "SweetMiranda.check")
         Task { [weak self] in
-            guard let self else { return }
-            defer { self.checking = false }
+            guard let self else { bgTask.end()
+                return }
+            defer {
+                DispatchQueue.main.async { self.checking = false }
+                bgTask.end()
+            }
             let docs = await self.nightscoutManager.sweetMirandaFetchPending()
             let proposals = docs.compactMap(SMProposal.init(document:))
                 .filter { !self.handledIds.contains($0.id) }
@@ -386,7 +399,9 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
         snapshotDebounce?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            let bgTask = SMBackgroundTask(name: "SweetMiranda.snapshot")
             Task {
+                defer { bgTask.end() }
                 do {
                     let doc = try SweetMirandaSettingsCatalog.snapshot(self.sources())
                     let hash = SweetMirandaSettingsCatalog.hash(of: doc)
@@ -431,6 +446,34 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             supportedBasalRates: deviceManager.pumpManager?.supportedBasalRates.filter { $0 > 0 }.map { Decimal($0) },
             remoteControlEnabled: UserDefaults.standard.bool(forKey: "isTrioRemoteControlEnabled")
         )
+    }
+}
+
+// MARK: - Background time
+
+/// Wraps UIApplication background-task bookkeeping so a Sweet Miranda request can finish after the
+/// app is backgrounded, and is ended exactly once (on completion or when iOS says time is up).
+private final class SMBackgroundTask {
+    private var id: UIBackgroundTaskIdentifier = .invalid
+    private let lock = NSLock()
+
+    init(name: String) {
+        let start = { [self] in
+            let newId = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in self?.end() }
+            lock.lock()
+            id = newId
+            lock.unlock()
+        }
+        if Thread.isMainThread { start() } else { DispatchQueue.main.sync(execute: start) }
+    }
+
+    func end() {
+        lock.lock()
+        let current = id
+        id = .invalid
+        lock.unlock()
+        guard current != .invalid else { return }
+        DispatchQueue.main.async { UIApplication.shared.endBackgroundTask(current) }
     }
 }
 

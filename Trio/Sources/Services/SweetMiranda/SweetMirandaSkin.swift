@@ -93,17 +93,23 @@ struct SweetMirandaOrb: View {
     private var tint: (ring: Color, lit: Color, dark: Color) {
         switch state ?? fallbackState {
         case .critical:
-            return (SweetMirandaPalette.red,
-                    Color(red: 1.0, green: 0.62, blue: 0.62),
-                    Color(red: 0.557, green: 0.122, blue: 0.122))
+            return (
+                SweetMirandaPalette.red,
+                Color(red: 1.0, green: 0.62, blue: 0.62),
+                Color(red: 0.557, green: 0.122, blue: 0.122)
+            )
         case .warning:
-            return (SweetMirandaPalette.amber,
-                    Color(red: 1.0, green: 0.851, blue: 0.541),
-                    Color(red: 0.541, green: 0.369, blue: 0.0))
+            return (
+                SweetMirandaPalette.amber,
+                Color(red: 1.0, green: 0.851, blue: 0.541),
+                Color(red: 0.541, green: 0.369, blue: 0.0)
+            )
         default:
-            return (SweetMirandaPalette.mint,
-                    Color(red: 0.553, green: 0.941, blue: 0.769),
-                    Color(red: 0.071, green: 0.447, blue: 0.298))
+            return (
+                SweetMirandaPalette.mint,
+                Color(red: 0.553, green: 0.941, blue: 0.769),
+                Color(red: 0.071, green: 0.447, blue: 0.298)
+            )
         }
     }
 

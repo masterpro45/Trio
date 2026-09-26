@@ -53,9 +53,11 @@ extension UserInterfaceSettings {
                     Toggle(isOn: sweetMirandaSkinEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Miranda's home screen")
-                            Text("Big pink EAT + DOSE button, alerts and history beside it, and status circles that fade as the pod and sensor run out. Turn it off for the standard Trio screen.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "Big pink EAT + DOSE button, alerts and history beside it, and status circles that fade as the pod and sensor run out. Turn it off for the standard Trio screen."
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                         }
                     }
                     .frame(minHeight: 44)

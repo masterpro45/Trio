@@ -228,7 +228,6 @@ extension SweetMiranda {
             return String(format: String(localized: "%d min ago"), minutes)
         }
 
-
         // MARK: - Graph
 
         /// Her last three hours, drawn with a shadowed line under the real one so it reads with
