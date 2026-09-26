@@ -192,9 +192,16 @@ enum SMApprovers {
         String(SHA256.hash(data: publicKey).map { String(format: "%02x", $0) }.joined().prefix(16))
     }
 
+    /// A signature only counts with a signed expiry no further out than a proposal lives. Without one,
+    /// an old approval could be replayed once its id drops out of `handledIds`; `created_at` is not signed.
+    static func hasSignedExpiry(_ p: SMProposal, now: Date = Date()) -> Bool {
+        guard !p.expiresRaw.isEmpty, let e = SMDates.parse(p.expiresRaw) else { return false }
+        return e > now && e.timeIntervalSince(now) <= SweetMiranda.proposalTTL + 300
+    }
+
     /// The approver whose Face ID signed exactly this proposal, or nil. A bad approval is ignored, never fatal.
     static func verify(_ a: SMApproval, for p: SMProposal, approvers: [SMApprover]) -> SMApprover? {
-        guard a.proposalId == p.id, !p.touchesApprovers, !p.isExpired,
+        guard a.proposalId == p.id, !p.touchesApprovers, !p.isExpired, hasSignedExpiry(p),
               let expected = payload(for: p), a.payload == expected,
               let approver = approvers.first(where: { $0.keyId == a.keyId }),
               let keyData = Data(base64Encoded: approver.publicKey),
