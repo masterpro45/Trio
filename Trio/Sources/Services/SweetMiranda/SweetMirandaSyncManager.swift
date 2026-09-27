@@ -37,6 +37,7 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @Injected() private var unlockManager: UnlockManager!
     @Injected() private var router: Router!
     @Injected() private var broadcaster: Broadcaster!
+    @Injected() private var glucoseStorage: GlucoseStorage!
 
     @Published private(set) var pending: SMProposal?
     @Published private(set) var pendingLines: [SMChangeLine] = []
@@ -87,6 +88,13 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             .sink { [weak self] _ in self?.checkNow() }
             .store(in: &subscriptions)
 
+        // Dream Mode resumes insulin on time. A paused pod stops loop cycles, so this rides on every
+        // new G6 reading instead — it keeps arriving every 5 min with the phone locked.
+        glucoseStorage.updatePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.tickDreamMode() }
+            .store(in: &subscriptions)
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.pollTimer = Timer.scheduledTimer(withTimeInterval: self.foregroundPoll, repeats: true) { [weak self] _ in
@@ -103,7 +111,13 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
 
     func applicationBecameActive() {
         checkNow()
+        tickDreamMode()
         Task { @MainActor in self.presentPendingIfNeeded() }
+    }
+
+    private func tickDreamMode() {
+        guard SweetMirandaDreamMode.shared.isOn else { return }
+        Task { @MainActor in await SweetMirandaDreamMode.shared.tick(apsManager: self.apsManager) }
     }
 
     // MARK: - Proposals in

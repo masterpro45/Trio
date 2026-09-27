@@ -1,4 +1,6 @@
 import Charts
+import LoopKit
+import LoopKitUI
 import SwiftUI
 import Swinject
 
@@ -29,6 +31,11 @@ extension SweetMiranda {
         @State private var confirmMode: SweetMirandaMode?
         @State private var modeMessage: String?
         @State private var modeBusy = false
+        /// The mode button she is holding down (2 s starts it), and how far the fill has got.
+        @State private var holdingMode: SweetMirandaMode?
+        @State private var holdProgress: CGFloat = 0
+        @ObservedObject private var dream = SweetMirandaDreamMode.shared
+        private let dreamClock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
         /// Pod Keep Alive, re-read when she comes back to the screen (reading pump state each frame is wasteful).
         @State private var keepAliveLoopsWhenLocked: Bool?
         @ObservedObject private var foods = SweetMirandaFoodStore.shared
@@ -99,20 +106,59 @@ extension SweetMiranda {
                     )
                 }
             }
+            // Her Dexcom's own screen (change sensor / transmitter), exactly as stock Home opens it.
+            .sheet(isPresented: $state.shouldDisplayCGMSetupSheet, onDismiss: refreshDeviceFacts) {
+                switch state.cgmCurrent.type {
+                case .nightscout,
+                     .none,
+                     .simulator,
+                     .xdrip:
+                    CGMSettings.CustomCGMOptionsView(
+                        resolver: resolver,
+                        state: state.cgmStateModel,
+                        cgmCurrent: state.cgmCurrent,
+                        deleteCGM: state.deleteCGM
+                    )
+                    .environment(settingsSearchHighlight)
+                case .plugin:
+                    if let fetchGlucoseManager = state.fetchGlucoseManager,
+                       let cgmManager = fetchGlucoseManager.cgmManager,
+                       state.cgmCurrent.type == fetchGlucoseManager.cgmGlucoseSourceType,
+                       state.cgmCurrent.id == fetchGlucoseManager.cgmGlucosePluginId
+                    {
+                        CGMSettings.CGMSettingsView(
+                            cgmManager: cgmManager,
+                            bluetoothManager: state.provider.apsManager.bluetoothManager!,
+                            unit: state.settingsManager.settings.units,
+                            completionDelegate: state
+                        )
+                    } else {
+                        CGMSettings.CGMSetupView(
+                            CGMType: state.cgmCurrent,
+                            bluetoothManager: state.provider.apsManager.bluetoothManager!,
+                            unit: state.settingsManager.settings.units,
+                            completionDelegate: state,
+                            setupDelegate: state,
+                            pluginCGMManager: state.pluginCGMManager
+                        )
+                    }
+                }
+            }
+            // After the 2-second hold: how long?
             .confirmationDialog(
-                confirmMode
-                    .map { modePresets[$0] == nil ? "\($0.presetName) isn't set up yet" : "Start \($0.presetName)?" } ?? "",
+                confirmMode.map { "Start \($0.presetName) — for how long?" } ?? "",
                 isPresented: Binding(get: { confirmMode != nil }, set: { if !$0 { confirmMode = nil } }),
                 titleVisibility: .visible,
                 presenting: confirmMode
             ) { mode in
-                if modePresets[mode] != nil {
-                    Button("Start \(mode.presetName)") { startMode(mode) }
+                ForEach(mode.choices, id: \.self) { minutes in
+                    Button(SweetMirandaMode.choiceLabel(minutes)) { startMode(mode, minutes: minutes) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { mode in
                 Text(modeSummary(mode))
             }
+            .onReceive(dreamClock) { _ in tickDream() }
             .alert(
                 "Mode",
                 isPresented: Binding(get: { modeMessage != nil }, set: { if !$0 { modeMessage = nil } }),
@@ -122,11 +168,12 @@ extension SweetMiranda {
             .environment(settingsSearchHighlight)
         }
 
-        // MARK: - Activity Mode
+        // MARK: - Activity Mode + Dream Mode
 
-        /// Her easy button. It only switches Trio's own override preset on and off — the one named
-        /// "Activity Mode" (set up in Trio ▸ Adjustments by her parents and care team). Nothing here
-        /// chooses a number. Starting it asks first and says what the preset does.
+        /// Her two mode buttons (Wilson 2026-09-27). Hold 2 seconds to start, then she picks how long;
+        /// tap to stop. Activity Mode = Trio's own override preset (target 150, insulin unchanged, like
+        /// Omnipod 5 Activity). Dream Mode = no insulin: Trio's own pod pause, resumed on time by
+        /// `SweetMirandaDreamMode`. Nothing here computes a dose.
         private var modesRow: some View {
             HStack(spacing: 10) {
                 ForEach(SweetMirandaMode.allCases) { modeButton($0) }
@@ -136,63 +183,111 @@ extension SweetMiranda {
         }
 
         private func isActive(_ mode: SweetMirandaMode) -> Bool {
-            state.overrides.contains { $0.enabled && mode.matches($0.name ?? "") }
+            switch mode {
+            case .activity: return state.overrides.contains { $0.enabled && mode.matches($0.name ?? "") }
+            case .dream: return dream.isOn
+            }
         }
 
-        private func modeButton(_ mode: SweetMirandaMode) -> some View {
-            let active = isActive(mode)
-            return Button {
-                if active { endMode(mode) } else { confirmMode = mode }
-            } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 18, weight: .bold))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(mode.presetName)
-                            .font(.system(size: 15, weight: .heavy, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Text(active ? "ON · tap to stop" : (modePresets[mode] == nil ? "not set up" : "tap to start"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .opacity(0.85)
-                    }
-                    Spacer(minLength: 0)
+        private func modeCaption(_ mode: SweetMirandaMode, active: Bool) -> String {
+            if active {
+                if mode == .dream, let back = dream.resumeAt {
+                    return "No insulin · back \(back.formatted(date: .omitted, time: .shortened)) · tap to resume"
                 }
-                .foregroundStyle(active ? SweetMirandaPalette.ink : mode.tint)
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 54)
-                .background {
+                return "ON · tap to stop"
+            }
+            return holdingMode == mode ? "Keep holding…" : "hold 2 sec to start"
+        }
+
+        @ViewBuilder private func modeButton(_ mode: SweetMirandaMode) -> some View {
+            let active = isActive(mode)
+            let face = HStack(spacing: 9) {
+                Image(systemName: mode.icon)
+                    .font(.system(size: 18, weight: .bold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(mode.presetName)
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(modeCaption(mode, active: active))
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .opacity(0.85)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(active ? SweetMirandaPalette.ink : mode.tint)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background {
+                ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 18)
                         .fill(active ? mode.tint : mode.tint.opacity(0.14))
                         .shadow(color: active ? mode.tint.opacity(0.6) : .clear, radius: 10)
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(mode.tint.opacity(0.35))
+                            .frame(width: geo.size.width * (holdingMode == mode ? holdProgress : 0))
+                    }
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(modeBusy)
+            .contentShape(RoundedRectangle(cornerRadius: 18))
+            .opacity(modeBusy ? 0.6 : 1)
+            .allowsHitTesting(!modeBusy)
+            .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(mode.presetName + (active ? ", on" : "")))
+
+            if active {
+                face
+                    .onTapGesture { endMode(mode) }
+                    .accessibilityAction { endMode(mode) }
+            } else {
+                face
+                    .onLongPressGesture(minimumDuration: 2, maximumDistance: 40) {
+                        holdingMode = nil
+                        holdProgress = 0
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmMode = mode
+                    } onPressingChanged: { pressing in
+                        holdingMode = pressing ? mode : nil
+                        withAnimation(pressing ? .linear(duration: 2) : .easeOut(duration: 0.2)) {
+                            holdProgress = pressing ? 1 : 0
+                        }
+                    }
+                    .accessibilityAction { confirmMode = mode }
+            }
         }
 
         private func modeSummary(_ mode: SweetMirandaMode) -> String {
-            guard let p = modePresets[mode] else {
-                return "Ask Mom or Dad to add an adjustment preset named “\(mode.presetName)” in Trio ▸ Adjustments. The numbers come from them and your care team."
+            switch mode {
+            case .activity:
+                guard let p = modePresets[.activity] else {
+                    return "Target \(SweetMirandaActivity.defaultTarget) mg/dL · insulin unchanged. Tap it again any time to stop."
+                }
+                var parts = ["Insulin \(Int(p.percentage.rounded()))%"]
+                if let t = p.target, t > 0 { parts.append("target \(t) mg/dL") }
+                return parts.joined(separator: " · ") + ". Tap it again any time to stop."
+            case .dream:
+                return "Your pod gives NO insulin until the time is up — then insulin turns back on by itself. Tap Dream Mode any time to turn insulin back on sooner."
             }
-            var parts = ["Insulin \(Int(p.percentage.rounded()))%"]
-            if let t = p.target, t > 0 { parts.append("target \(t) mg/dL") }
-            if p.indefinite {
-                parts.append("until you stop it")
-            } else if let m = p.minutes, m > 0 {
-                parts.append("for \(m) min")
-            }
-            return parts.joined(separator: " · ")
         }
 
-        private func startMode(_ mode: SweetMirandaMode) {
-            guard let preset = modePresets[mode], let manager = resolver.resolve(AdjustmentManager.self) else { return }
+        private func startMode(_ mode: SweetMirandaMode, minutes: Int) {
             modeBusy = true
             Task { @MainActor in
                 defer { modeBusy = false }
                 do {
-                    try await manager.activateOverride(.presetID(preset.id), source: .app, waitForUpload: false)
+                    switch mode {
+                    case .activity:
+                        guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
+                        let id = try await SweetMirandaActivity.prepare(resolver: resolver, minutes: minutes)
+                        try await manager.activateOverride(.presetID(id), source: .app, waitForUpload: false)
+                        await loadModePresets()
+                    case .dream:
+                        guard let aps = resolver.resolve(APSManager.self) else { return }
+                        try await dream.start(minutes: minutes, apsManager: aps)
+                    }
                 } catch {
                     modeMessage = "Couldn't start \(mode.presetName): \(error.localizedDescription)"
                 }
@@ -200,17 +295,33 @@ extension SweetMiranda {
         }
 
         private func endMode(_ mode: SweetMirandaMode) {
-            guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
             modeBusy = true
             Task { @MainActor in
                 defer { modeBusy = false }
                 do {
-                    try await manager.cancelOverride(source: .app, waitForUpload: false)
+                    switch mode {
+                    case .activity:
+                        guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
+                        try await manager.cancelOverride(source: .app, waitForUpload: false)
+                    case .dream:
+                        guard let aps = resolver.resolve(APSManager.self) else { return }
+                        try await dream.stop(apsManager: aps)
+                    }
                 } catch AdjustmentError.nothingActive {
                 } catch {
-                    modeMessage = "Couldn't stop \(mode.presetName): \(error.localizedDescription)"
+                    modeMessage = mode == .dream
+                        ?
+                        "Insulin is still paused — couldn't reach your pod: \(error.localizedDescription). Try again, or resume from the pod screen."
+                        : "Couldn't stop \(mode.presetName): \(error.localizedDescription)"
                 }
             }
+        }
+
+        /// Foreground check every 30 s; in the background every new G6 reading does the same
+        /// (`BaseSweetMirandaSyncManager`).
+        private func tickDream() {
+            guard dream.isOn, let aps = resolver.resolve(APSManager.self) else { return }
+            Task { @MainActor in await dream.tick(apsManager: aps) }
         }
 
         @MainActor private func loadModePresets() async {
@@ -261,10 +372,12 @@ extension SweetMiranda {
             return sensor.daysRemaining
         }
 
-        /// The sensor circle: Trio's own CGM screen when a CGM is connected, else her date screen.
+        /// The sensor circle: her Dexcom's own screen (the one stock Home opens from the glucose
+        /// circle — start / stop / change sensor, transmitter) when Trio talks to the CGM itself,
+        /// else her date screen.
         private func openSensor() {
             if cgmKnowsSensorAge {
-                state.showModal(for: .cgm)
+                state.shouldDisplayCGMSetupSheet = true
             } else {
                 showSensor = true
             }
@@ -351,7 +464,10 @@ extension SweetMiranda {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint(Text("Set the day you put your sensor on"))
+                .accessibilityHint(Text(
+                    cgmKnowsSensorAge ? "Opens your Dexcom to change the sensor" :
+                        "Set the day you put your sensor on"
+                ))
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -617,8 +733,12 @@ extension SweetMiranda {
             return "\(Int(cob)) g"
         }
 
+        /// The running override's target (Activity Mode's 150) when one is on, else her profile target.
         private var targetText: String {
-            "\(Int(truncating: state.currentGlucoseTarget as NSNumber))"
+            if let t = state.overrides.first(where: { $0.enabled })?.target, t.intValue > 0 {
+                return "\(t.intValue)"
+            }
+            return "\(Int(truncating: state.currentGlucoseTarget as NSNumber))"
         }
 
         private func statTile(value: String, caption: String, tint: Color, background: Color) -> some View {
@@ -1188,21 +1308,190 @@ extension SweetMiranda {
     }
 }
 
-// MARK: - Activity Mode
+// MARK: - Activity Mode + Dream Mode
 
-/// Her easy mode button(s). Wilson 2026-09-27: one button, "Activity Mode" — like the Activity
-/// feature she had on Omnipod 5 (raised target for a while). Dream Mode was dropped.
+/// Her two mode buttons. Wilson 2026-09-27 (build 15): Activity Mode = target 150, insulin unchanged
+/// (Omnipod 5 Activity); Dream Mode = no insulin, for swimming, hard exercise or a low on the way.
+/// Both start with a 2-second hold, then she picks how long.
 enum SweetMirandaMode: String, CaseIterable, Identifiable, Hashable {
     case activity
+    case dream
 
     var id: String { rawValue }
-    var presetName: String { "Activity Mode" }
-    /// Any Trio override preset whose name contains one of these (case-insensitive) is hers.
-    var keywords: [String] { ["activity", "sport", "exercise"] }
-    var icon: String { "figure.run" }
-    var tint: Color { SweetMirandaPalette.mint }
+    var presetName: String { self == .activity ? "Activity Mode" : "Dream Mode" }
+    /// Activity: any Trio override preset whose name contains one of these (case-insensitive) is hers.
+    var keywords: [String] { self == .activity ? ["activity", "sport", "exercise"] : [] }
+    var icon: String { self == .activity ? "figure.run" : "moon.zzz.fill" }
+    var tint: Color { self == .activity ? SweetMirandaPalette.mint : SweetMirandaPalette.lilac }
+    /// Minutes she can pick after the hold; 0 = until she stops it. Dream never runs past 2 h.
+    var choices: [Int] { self == .activity ? [60, 120, 240, 0] : SweetMirandaDreamMode.choices }
 
     func matches(_ name: String) -> Bool { keywords.contains { name.localizedCaseInsensitiveContains($0) } }
+
+    static func choiceLabel(_ minutes: Int) -> String {
+        switch minutes {
+        case 0: return "Until I stop it"
+        case ..<60: return "\(minutes) minutes"
+        case 60: return "1 hour"
+        default: return "\(minutes / 60) hours"
+        }
+    }
+}
+
+/// Activity Mode runs Trio's own override preset, so it shows in Trio ▸ Adjustments, on the chart
+/// and in Nightscout like any override. A preset her parents made (name has activity / sport /
+/// exercise) keeps their numbers; if the phone has none, it is created once with Wilson's numbers.
+enum SweetMirandaActivity {
+    /// Wilson 2026-09-27: target 150 mg/dL, insulin unchanged — like Omnipod 5 Activity.
+    static let defaultTarget: Decimal = 150
+
+    /// Returns the preset id after writing the length she picked onto it (0 = until she stops it).
+    @MainActor static func prepare(resolver: Resolver, minutes: Int) async throws -> String {
+        guard let storage = resolver.resolve(OverrideStorage.self) else { throw SMModeError.unavailable }
+        if try await preset(storage) == nil {
+            try await storage.storeOverride(override: Override(
+                name: SweetMirandaMode.activity.presetName,
+                enabled: false,
+                date: Date(),
+                duration: Decimal(minutes > 0 ? minutes : 60),
+                indefinite: minutes == 0,
+                percentage: 100,
+                smbIsOff: false,
+                isPreset: true,
+                id: UUID().uuidString,
+                overrideTarget: true,
+                target: defaultTarget,
+                advancedSettings: false,
+                isfAndCr: true,
+                isf: true,
+                cr: true,
+                smbIsScheduledOff: false,
+                start: 0,
+                end: 0,
+                smbMinutes: 0,
+                uamMinutes: 0
+            ))
+        }
+        guard let row = try await preset(storage), let id = row.id else { throw SMModeError.unavailable }
+        row.indefinite = minutes == 0
+        if minutes > 0 { row.duration = NSDecimalNumber(value: minutes) }
+        let context = CoreDataStack.shared.persistentContainer.viewContext
+        if context.hasChanges { try context.save() }
+        return id
+    }
+
+    @MainActor private static func preset(_ storage: OverrideStorage) async throws -> OverrideStored? {
+        let context = CoreDataStack.shared.persistentContainer.viewContext
+        for objectID in try await storage.fetchForOverridePresets() {
+            if let o = try? context.existingObject(with: objectID) as? OverrideStored,
+               SweetMirandaMode.activity.matches(o.name ?? "")
+            {
+                return o
+            }
+        }
+        return nil
+    }
+}
+
+enum SMModeError: LocalizedError {
+    case unavailable
+    case alreadyPaused
+    case noPod
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: return "Trio isn't ready yet — try again in a moment."
+        case .alreadyPaused: return "Your pod is already paused. Resume it from the pod screen first."
+        case .noPod: return "No pod is connected."
+        }
+    }
+}
+
+/// Dream Mode: no insulin for a time she picks (30 min / 1 h / 2 h — never longer), then insulin
+/// comes back by itself. It is Trio's own pod pause (`APSManager.suspendDelivery`), because an
+/// override can't go below 40 %. The end time is kept on the phone; every new G6 reading (every
+/// 5 min, phone locked or not) and the open home screen check it and resume the pod on time,
+/// retrying on the next reading if the pod can't be reached. The Odysseus watchdog WhatsApps Wilson
+/// if the pod stays paused past the longest choice. It never sends anything to her.
+final class SweetMirandaDreamMode: ObservableObject {
+    static let shared = SweetMirandaDreamMode()
+    static let choices = [30, 60, 120]
+    static let maxMinutes = 120
+
+    @Published private(set) var resumeAt: Date?
+    private var startedAt: Date?
+    private var resuming = false
+
+    private enum Key {
+        static let resumeAt = "sweetMiranda.dream.resumeAt"
+        static let startedAt = "sweetMiranda.dream.startedAt"
+    }
+
+    private init() {
+        let d = UserDefaults.standard
+        resumeAt = d.object(forKey: Key.resumeAt) as? Date
+        startedAt = d.object(forKey: Key.startedAt) as? Date
+    }
+
+    var isOn: Bool { resumeAt != nil }
+
+    @MainActor func start(minutes: Int, apsManager: APSManager) async throws {
+        guard !apsManager.isSuspended else { throw SMModeError.alreadyPaused }
+        let m = min(max(minutes, 1), Self.maxMinutes)
+        try await Self.pump(apsManager) { $0.suspendDelivery(completion: $1) }
+        let now = Date()
+        remember(started: now, resume: now.addingTimeInterval(TimeInterval(m * 60)))
+        debug(.apsManager, "SweetMiranda: Dream Mode on — pod paused for \(m) min")
+    }
+
+    @MainActor func stop(apsManager: APSManager) async throws {
+        try await Self.pump(apsManager) { $0.resumeDelivery(completion: $1) }
+        remember(started: nil, resume: nil)
+        debug(.apsManager, "SweetMiranda: Dream Mode off — insulin resumed by her")
+    }
+
+    /// Resume the pod once the time is up. Safe to call as often as you like.
+    @MainActor func tick(apsManager: APSManager) async {
+        guard let resumeAt, !resuming else { return }
+        // Resumed some other way (pod screen, new pod): forget Dream Mode. The grace keeps a
+        // just-started pause from being cleared before the pump reports "suspended".
+        if !apsManager.isSuspended, let startedAt, Date().timeIntervalSince(startedAt) > 180 {
+            remember(started: nil, resume: nil)
+            return
+        }
+        guard Date() >= resumeAt else { return }
+        resuming = true
+        defer { resuming = false }
+        do {
+            try await Self.pump(apsManager) { $0.resumeDelivery(completion: $1) }
+            remember(started: nil, resume: nil)
+            debug(.apsManager, "SweetMiranda: Dream Mode time up — insulin resumed")
+        } catch {
+            // Keep the end time: the next glucose reading tries again.
+            debug(.apsManager, "SweetMiranda: Dream Mode resume failed, will retry: \(error)")
+        }
+    }
+
+    /// The pod's own suspend / resume (LoopKit `PumpManager`), the same calls Trio's pump screen makes.
+    private static func pump(
+        _ apsManager: APSManager,
+        _ command: @escaping (PumpManagerUI, @escaping (Error?) -> Void) -> Void
+    ) async throws {
+        guard let pumpManager = apsManager.pumpManager else { throw SMModeError.noPod }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            command(pumpManager) { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            }
+        }
+    }
+
+    @MainActor private func remember(started: Date?, resume: Date?) {
+        startedAt = started
+        resumeAt = resume
+        let d = UserDefaults.standard
+        d.set(started, forKey: Key.startedAt)
+        d.set(resume, forKey: Key.resumeAt)
+    }
 }
 
 /// What a Trio override preset does, for the "Start …?" question.
