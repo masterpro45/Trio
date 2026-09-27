@@ -24,7 +24,7 @@ extension SweetMiranda {
         @State private var showSettings = false
         @State private var showAlerts = false
         @State private var showSensor = false
-        /// Sports / Dream: Trio's own override presets, found by name.
+        /// Activity Mode: Trio's own override preset, found by name.
         @State private var modePresets: [SweetMirandaMode: SMModePreset] = [:]
         @State private var confirmMode: SweetMirandaMode?
         @State private var modeMessage: String?
@@ -122,11 +122,11 @@ extension SweetMiranda {
             .environment(settingsSearchHighlight)
         }
 
-        // MARK: - Sports / Dream
+        // MARK: - Activity Mode
 
-        /// Her two easy buttons. They only switch Trio's own override presets on and off — the
-        /// preset named "Sports Mode" or "Dream Mode" (set up in Trio ▸ Adjustments by her parents
-        /// and care team). Nothing here chooses a number. Starting one asks first and says what it does.
+        /// Her easy button. It only switches Trio's own override preset on and off — the one named
+        /// "Activity Mode" (set up in Trio ▸ Adjustments by her parents and care team). Nothing here
+        /// chooses a number. Starting it asks first and says what the preset does.
         private var modesRow: some View {
             HStack(spacing: 10) {
                 ForEach(SweetMirandaMode.allCases) { modeButton($0) }
@@ -136,7 +136,7 @@ extension SweetMiranda {
         }
 
         private func isActive(_ mode: SweetMirandaMode) -> Bool {
-            state.overrides.contains { $0.enabled && ($0.name ?? "").localizedCaseInsensitiveContains(mode.keyword) }
+            state.overrides.contains { $0.enabled && mode.matches($0.name ?? "") }
         }
 
         private func modeButton(_ mode: SweetMirandaMode) -> some View {
@@ -222,7 +222,7 @@ extension SweetMiranda {
                 guard let o = try? context.existingObject(with: objectID) as? OverrideStored,
                       let name = o.name, let id = o.id else { continue }
                 for mode in SweetMirandaMode.allCases
-                    where found[mode] == nil && name.localizedCaseInsensitiveContains(mode.keyword)
+                    where found[mode] == nil && mode.matches(name)
                 {
                     found[mode] = SMModePreset(
                         id: id,
@@ -1188,18 +1188,21 @@ extension SweetMiranda {
     }
 }
 
-// MARK: - Sports / Dream modes
+// MARK: - Activity Mode
 
+/// Her easy mode button(s). Wilson 2026-09-27: one button, "Activity Mode" — like the Activity
+/// feature she had on Omnipod 5 (raised target for a while). Dream Mode was dropped.
 enum SweetMirandaMode: String, CaseIterable, Identifiable, Hashable {
-    case sports
-    case dream
+    case activity
 
     var id: String { rawValue }
-    var presetName: String { self == .sports ? "Sports Mode" : "Dream Mode" }
-    /// Matched case-insensitively inside the preset's name.
-    var keyword: String { self == .sports ? "sport" : "dream" }
-    var icon: String { self == .sports ? "figure.run" : "moon.stars.fill" }
-    var tint: Color { self == .sports ? SweetMirandaPalette.mint : SweetMirandaPalette.lilac }
+    var presetName: String { "Activity Mode" }
+    /// Any Trio override preset whose name contains one of these (case-insensitive) is hers.
+    var keywords: [String] { ["activity", "sport", "exercise"] }
+    var icon: String { "figure.run" }
+    var tint: Color { SweetMirandaPalette.mint }
+
+    func matches(_ name: String) -> Bool { keywords.contains { name.localizedCaseInsensitiveContains($0) } }
 }
 
 /// What a Trio override preset does, for the "Start …?" question.
