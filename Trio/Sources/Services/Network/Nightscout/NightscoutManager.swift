@@ -24,6 +24,7 @@ protocol NightscoutManager: GlucoseSource {
     func sweetMirandaFetchPending() async -> [[String: Any]]
     func sweetMirandaUpload(document: [String: Any]) async -> Bool
     func sweetMirandaFetchApprovals(proposalId: String) async -> [[String: Any]]
+    func sweetMirandaFetchFoods() async -> [[String: Any]]
 }
 
 final class BaseNightscoutManager: NightscoutManager, Injectable {
@@ -1583,6 +1584,17 @@ extension BaseNightscoutManager {
             ])
         } catch {
             debug(.remoteControl, "SweetMiranda: fetch approvals failed \(error)")
+            return []
+        }
+    }
+
+    /// Her food list (WilHQ → Nightscout food collection). Empty on any failure — the phone keeps its copy.
+    func sweetMirandaFetchFoods() async -> [[String: Any]] {
+        guard let nightscout = nightscoutAPI, isNetworkReachable else { return [] }
+        do {
+            return try await nightscout.fetchSweetMirandaFoods()
+        } catch {
+            debug(.remoteControl, "SweetMiranda: fetch foods failed \(error)")
             return []
         }
     }

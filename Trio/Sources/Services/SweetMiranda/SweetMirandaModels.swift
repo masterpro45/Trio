@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import LoopKit
 
 /// Sweet Miranda (wilhq.com) ⇄ Trio settings bridge — shared vocabulary.
 ///
@@ -227,4 +228,21 @@ enum SMApprovers {
         }
         return SMApprover(keyId: keyId, name: name, publicKey: pk, addedAt: Date())
     }
+}
+
+// MARK: - Pod Keep Alive
+
+/// OmnipodKit's "Pod Keep Alive", read from the pump manager's saved state (raw values as of
+/// Trio v1.0.1 / OmnipodKit 4e923d7 — the enum was reordered between versions, so re-check on
+/// any OmnipodKit bump). With glucose arriving from Nightscout, nothing but the pod wakes Trio
+/// while the phone is locked: "When Open" (the default) means no loops with the screen off.
+enum SweetMirandaPodKeepAlive {
+    static let names = [0: "Disabled", 1: "When Open", 2: "Silent Tune", 3: "RileyLink"]
+
+    static func raw(_ pump: PumpManager?) -> Int? { pump?.rawState["podKeepAlive"] as? Int }
+
+    static func name(_ pump: PumpManager?) -> String? { raw(pump).flatMap { names[$0] } }
+
+    /// nil when the pump is not an Omnipod (no such setting).
+    static func loopsWhenLocked(_ pump: PumpManager?) -> Bool? { raw(pump).map { $0 == 2 || $0 == 3 } }
 }

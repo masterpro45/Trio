@@ -530,7 +530,8 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             pumpName: deviceManager.pumpName.value,
             supportedBasalRates: deviceManager.pumpManager?.supportedBasalRates.filter { $0 > 0 }.map { Decimal($0) },
             remoteControlEnabled: UserDefaults.standard.bool(forKey: "isTrioRemoteControlEnabled"),
-            approvers: approvers
+            approvers: approvers,
+            podKeepAlive: SweetMirandaPodKeepAlive.name(deviceManager.pumpManager)
         )
     }
 }

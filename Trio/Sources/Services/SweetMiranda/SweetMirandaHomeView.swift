@@ -23,6 +23,10 @@ extension SweetMiranda {
         @State private var doseAfterEat = false
         @State private var showSettings = false
         @State private var showAlerts = false
+        @State private var showSensor = false
+        /// Pod Keep Alive, re-read when she comes back to the screen (reading pump state each frame is wasteful).
+        @State private var keepAliveLoopsWhenLocked: Bool?
+        @ObservedObject private var foods = SweetMirandaFoodStore.shared
         /// Stock HomeRootView provides this to everything under it; Settings and Glucose Alarms
         /// read it from the environment and crash without it, so the skin provides its own.
         @State private var settingsSearchHighlight = SettingsSearchHighlight()
@@ -44,7 +48,10 @@ extension SweetMiranda {
                     bottomBar
                 }
             }
-            .onAppear(perform: configureView)
+            .onAppear {
+                configureView()
+                refreshDeviceFacts()
+            }
             .preferredColorScheme(.dark)
             .sheet(isPresented: $showEat, onDismiss: openTreatmentsIfChosen) {
                 SweetMiranda.EatView(
@@ -64,7 +71,46 @@ extension SweetMiranda {
             .sheet(isPresented: $showAlerts) {
                 NavigationStack { GlucoseAlerts.RootView(resolver: resolver) }
             }
+            .sheet(isPresented: $showSensor) {
+                NavigationStack { SweetMirandaSensorSessionView() }
+            }
+            // Trio's own pump screen (change pod, pod keep alive…), exactly as stock Home opens it.
+            .sheet(isPresented: $state.shouldDisplayPumpSetupSheet, onDismiss: refreshDeviceFacts) {
+                if let pumpManager = state.provider.apsManager.pumpManager {
+                    PumpConfig.PumpSettingsView(
+                        pumpManager: pumpManager,
+                        bluetoothManager: state.provider.apsManager.bluetoothManager!,
+                        completionDelegate: state,
+                        setupDelegate: state
+                    )
+                } else if let pumpEntry = state.setupPumpEntry {
+                    PumpConfig.PumpSetupView(
+                        pumpEntry: pumpEntry,
+                        pumpInitialSettings: state.pumpInitialSettings,
+                        bluetoothManager: state.provider.apsManager.bluetoothManager!,
+                        completionDelegate: state,
+                        setupDelegate: state
+                    )
+                }
+            }
             .environment(settingsSearchHighlight)
+        }
+
+        /// Pod Keep Alive and her food list: things that live outside Home.StateModel.
+        private func refreshDeviceFacts() {
+            keepAliveLoopsWhenLocked = SweetMirandaPodKeepAlive
+                .loopsWhenLocked(resolver.resolve(DeviceDataManager.self)?.pumpManager)
+            let nightscout = resolver.resolve(NightscoutManager.self)
+            Task { await SweetMirandaFoodStore.shared.refresh(nightscout: nightscout) }
+        }
+
+        /// The pod circles open Trio's pump screen, the same tap as the pump on stock Home.
+        private func openPump() {
+            if state.pumpDisplayState == nil {
+                state.showModal(for: .pumpConfigDirect)
+            } else {
+                state.shouldDisplayPumpSetupSheet = true
+            }
         }
 
         /// Trio's own carb + bolus screen, opened exactly as stock Home opens it, so it closes
@@ -111,25 +157,37 @@ extension SweetMiranda {
 
         private var orbRow: some View {
             HStack(spacing: 10) {
-                SweetMirandaOrb(
-                    value: reservoirOrbValue,
-                    maximum: Self.podCapacity,
-                    label: reservoirLabel,
-                    caption: String(localized: "UNITS LEFT")
-                )
-                SweetMirandaOrb(
-                    value: podHoursLeft ?? 0,
-                    maximum: 80,
-                    label: podHoursLeft.map { "\(Int($0.rounded()))h" } ?? "—",
-                    caption: String(localized: "POD HOURS")
-                )
-                SweetMirandaOrb(
-                    value: Double(sensor.daysRemaining ?? 0),
-                    maximum: sensor.lifetimeDays,
-                    label: sensor.daysRemaining.map { "\($0)d" } ?? "—",
-                    caption: String(localized: "SENSOR DAYS"),
-                    state: sensor.progressState()
-                )
+                Button(action: openPump) {
+                    SweetMirandaOrb(
+                        value: reservoirOrbValue,
+                        maximum: Self.podCapacity,
+                        label: reservoirLabel,
+                        caption: String(localized: "UNITS LEFT")
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Opens the pump settings"))
+                Button(action: openPump) {
+                    SweetMirandaOrb(
+                        value: podHoursLeft ?? 0,
+                        maximum: 80,
+                        label: podHoursLeft.map { "\(Int($0.rounded()))h" } ?? "—",
+                        caption: String(localized: "POD HOURS")
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Opens the pump settings to change the pod"))
+                Button { showSensor = true } label: {
+                    SweetMirandaOrb(
+                        value: Double(sensor.daysRemaining ?? 0),
+                        maximum: sensor.lifetimeDays,
+                        label: sensor.daysRemaining.map { "\($0)d" } ?? "—",
+                        caption: String(localized: "SENSOR DAYS"),
+                        state: sensor.progressState()
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Set the day you put your sensor on"))
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -175,6 +233,9 @@ extension SweetMiranda {
                     Int(hours.rounded())
                 )
             }
+            if keepAliveLoopsWhenLocked == false {
+                return String(localized: "Trio only loops while it's open. Ask Dad to set Pod Keep Alive to Silent Tune")
+            }
             if let days = sensor.daysRemaining, days <= 1 {
                 return String(localized: "Sensor ends tomorrow — pack a new one")
             }
@@ -185,7 +246,7 @@ extension SweetMiranda {
                 )
             }
             if sensor.startedAt == nil {
-                return String(localized: "Tell Trio when you put your sensor on — tap the gear, then CGM")
+                return String(localized: "Tell Trio when you put your sensor on: tap the sensor circle")
             }
             return nil
         }
@@ -419,6 +480,7 @@ extension SweetMiranda {
         private var bottomBar: some View {
             HStack(spacing: 10) {
                 Button {
+                    refreshDeviceFacts()
                     showEat = true
                 } label: {
                     HStack(spacing: 8) {
@@ -524,13 +586,67 @@ enum SweetMirandaMealHandoff {
     }
 }
 
-/// One of her favourite foods with its carbs per serving.
-struct SweetMirandaFood: Identifiable, Hashable {
+/// One food on her list, with its carbs for ONE serving as written.
+struct SweetMirandaFood: Identifiable, Hashable, Codable {
     let id: String
     let emoji: String
     let name: String
     let serving: String
     let carbs: Int
+    var favorite: Bool = true
+    var sort: Int = 100
+}
+
+/// Her food list. Edited in WilHQ (Sweet Miranda ▸ Foods, table `sm_foods`), copied by the Odysseus
+/// bridge into Nightscout's food collection (category "Sweet Miranda"), read here. The last good
+/// list is kept on the phone for when she is offline; the built-in ten are the fallback before the
+/// first download. Only carbs travel on to Trio's calculator.
+final class SweetMirandaFoodStore: ObservableObject {
+    static let shared = SweetMirandaFoodStore()
+
+    @Published private(set) var foods: [SweetMirandaFood]
+    private let cacheKey = "sweetMiranda.foods.cache"
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: cacheKey),
+           let cached = try? JSONDecoder().decode([SweetMirandaFood].self, from: data), !cached.isEmpty
+        {
+            foods = cached
+        } else {
+            foods = SweetMirandaFoods.favorites
+        }
+    }
+
+    func refresh(nightscout: NightscoutManager?) async {
+        guard let nightscout else { return }
+        let docs = await nightscout.sweetMirandaFetchFoods()
+        let list = docs.compactMap(Self.food(from:)).sorted {
+            ($0.favorite ? 0 : 1, $0.sort, $0.name) < ($1.favorite ? 0 : 1, $1.sort, $1.name)
+        }
+        guard !list.isEmpty else { return }
+        await MainActor.run {
+            guard list != self.foods else { return }
+            self.foods = list
+            if let data = try? JSONEncoder().encode(list) { UserDefaults.standard.set(data, forKey: self.cacheKey) }
+        }
+    }
+
+    /// One Nightscout food document written by the bridge; anything malformed is skipped.
+    static func food(from d: [String: Any]) -> SweetMirandaFood? {
+        guard (d["category"] as? String) == "Sweet Miranda",
+              let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let carbs = (d["carbs"] as? NSNumber)?.doubleValue, carbs >= 0, carbs <= 250
+        else { return nil }
+        return SweetMirandaFood(
+            id: (d["smFoodId"] as? String) ?? (d["_id"] as? String) ?? name,
+            emoji: (d["smEmoji"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "🍽️",
+            name: name,
+            serving: (d["smServing"] as? String) ?? "1 serving",
+            carbs: Int(carbs.rounded()),
+            favorite: (d["smFavorite"] as? Bool) ?? true,
+            sort: (d["smSort"] as? NSNumber)?.intValue ?? 100
+        )
+    }
 }
 
 enum SweetMirandaFoods {
@@ -563,19 +679,27 @@ extension SweetMiranda {
         @State private var typedCarbs = 0
         @State private var counts: [String: Int] = [:]
         @State private var showCorrection = false
+        @State private var search = ""
+        @ObservedObject private var store = SweetMirandaFoodStore.shared
+
+        private var shownFoods: [SweetMirandaFood] {
+            let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
+            return q.isEmpty ? store.foods : store.foods.filter { $0.name.localizedCaseInsensitiveContains(q) }
+        }
+
         @FocusState private var typing: Bool
 
         private static let maxTyped = 250
 
         private var favoritesCarbs: Int {
-            SweetMirandaFoods.favorites.reduce(0) { $0 + $1.carbs * (counts[$1.id] ?? 0) }
+            store.foods.reduce(0) { $0 + $1.carbs * (counts[$1.id] ?? 0) }
         }
 
         private var total: Int { typedCarbs + favoritesCarbs }
 
         /// Saved with the carbs so the data says what she ate, not just how much.
         private var note: String {
-            var parts = SweetMirandaFoods.favorites.compactMap { food -> String? in
+            var parts = store.foods.compactMap { food -> String? in
                 guard let n = counts[food.id], n > 0 else { return nil }
                 return n == 1 ? food.name : "\(n)× \(food.name)"
             }
@@ -686,13 +810,25 @@ extension SweetMiranda {
                     .kerning(0.6)
                     .foregroundStyle(SweetMirandaPalette.muted)
                     .padding(.bottom, 6)
-                ForEach(SweetMirandaFoods.favorites) { food in
+                if store.foods.count > 10 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(SweetMirandaPalette.muted)
+                        TextField("Find a food", text: $search)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .foregroundStyle(SweetMirandaPalette.text)
+                    }
+                    .padding(10)
+                    .background(SweetMirandaPalette.cardStrong, in: RoundedRectangle(cornerRadius: 14))
+                    .padding(.bottom, 6)
+                }
+                ForEach(shownFoods) { food in
                     foodRow(food)
-                    if food.id != SweetMirandaFoods.favorites.last?.id {
+                    if food.id != shownFoods.last?.id {
                         Divider().overlay(Color.white.opacity(0.06))
                     }
                 }
-                Text("Carbs per serving from USDA. Check the label when it's packaged.")
+                Text("Carbs per serving from her WilHQ food list. Check the label when it's packaged.")
                     .font(.system(size: 11))
                     .foregroundStyle(SweetMirandaPalette.muted)
                     .padding(.top, 8)

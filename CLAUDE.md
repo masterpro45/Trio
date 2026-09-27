@@ -21,6 +21,7 @@ This fork builds Trio for Miranda, who runs it on her iPhone with an Omnipod. It
 | 9 | 1.0.5 | `claude/approver-token-char-count-75brkh` | Remote approval requires a signed `smExpires`. Installed 2026-09-26. |
 | 10 | 1.0.6 | `sweetmiranda-101` | Her screen: "How many carbs?" first (typed or 10 USDA favorites), correction-only behind a 2 s hold, units left shows 50+ for the Omnipod sentinel, EAT + DOSE text fixed, Alerts/Settings no longer crash (skin provides `SettingsSearchHighlight`), treatment screen opened through the router. |
 | 11 | 1.0.7 | `sweetmiranda-101` | App icon is Luna, the family schnoodle (`design/luna_icon.svg`): `APP_ICON = luna`, `Icon_.primary = "luna"`, stock `trioBlack` kept as an alternate. Icons must be 1024 px with no alpha channel. |
+| 12 | 1.0.8 | `sweetmiranda-101` | Eat hand-off re-runs Trio's calculation once data is loaded and fills Trio's recommendation into Bolus (stops if she edits it) · pod circles open Trio's pump screen, sensor circle the sensor date · food list from WilHQ `sm_foods` via Nightscout's food collection (cached, built-in 10 as fallback) · Pod Keep Alive in the snapshot + a warning when Trio can't loop with the phone locked. **Root cause of 'loops only while open' (builds 4-11): Pod Keep Alive = When Open with Nightscout as the CGM — not our code (Simulator A/B vs stock v1.0.1: identical).** |
 
 ## Where the code is
 

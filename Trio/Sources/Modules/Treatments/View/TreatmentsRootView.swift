@@ -25,6 +25,10 @@ extension Treatments {
         @State private var pushed: Bool = false
         @State private var debounce: DispatchWorkItem?
         @State private var showFatProteinOrderBanner = false
+        /// Sweet Miranda: carbs came from her Eat screen, so fill the Bolus field with Trio's own
+        /// recommendation once it is calculated — until she types her own amount.
+        @State private var sweetMirandaPrefill = false
+        @State private var sweetMirandaPrefilled: Decimal = 0
 
         private enum Config {
             static let dividerHeight: CGFloat = 2
@@ -153,6 +157,17 @@ extension Treatments {
                 .focused($focusedField, equals: .carbs)
                 .onChange(of: state.carbs) {
                     handleDebouncedInput()
+                }
+                .onChange(of: state.insulinCalculated) { _, recommended in
+                    // Sweet Miranda: Trio's own recommendation into the Bolus field; she still
+                    // reviews it and confirms with Trio's button. Stops once she edits the amount.
+                    guard sweetMirandaPrefill else { return }
+                    guard state.amount == 0 || state.amount == sweetMirandaPrefilled else {
+                        sweetMirandaPrefill = false
+                        return
+                    }
+                    state.amount = recommended
+                    sweetMirandaPrefilled = recommended
                 }
             }
         }
@@ -437,6 +452,12 @@ extension Treatments {
                     if let meal = SweetMirandaMealHandoff.take() {
                         state.carbs = meal.carbs
                         if state.note.isEmpty { state.note = meal.note }
+                        // The first calculation below runs before this screen has loaded glucose,
+                        // IOB and the forecast, so run the same pipeline typed carbs run, twice,
+                        // once the data is in.
+                        sweetMirandaPrefill = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { handleDebouncedInput() }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { handleDebouncedInput() }
                     }
                     Task { @MainActor in
                         state.insulinCalculated = await state.calculateInsulin()

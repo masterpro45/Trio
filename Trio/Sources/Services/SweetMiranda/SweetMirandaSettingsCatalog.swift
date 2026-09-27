@@ -89,6 +89,7 @@ enum SweetMirandaSettingsCatalog {
         let supportedBasalRates: [Decimal]?
         let remoteControlEnabled: Bool
         let approvers: [SMApprover]
+        let podKeepAlive: String?
     }
 
     /// The full picture, as plain JSON.
@@ -98,6 +99,7 @@ enum SweetMirandaSettingsCatalog {
             .filter { settingsAllowed.contains($0.key) || ["units", "cgm", "isUploadEnabled", "uploadGlucose"].contains($0.key) }
         var pumpDict = try jsonObject(s.pump)
         pumpDict["name"] = s.pumpName
+        if let keepAlive = s.podKeepAlive { pumpDict["podKeepAlive"] = keepAlive }
         if let rates = s.supportedBasalRates, !rates.isEmpty {
             pumpDict["supportedBasalRates"] = ["min": dbl(rates.min()!), "max": dbl(rates.max()!), "count": rates.count]
         }

@@ -317,6 +317,30 @@ extension NightscoutAPI {
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
 
+    /// Sweet Miranda: her food list, kept in Nightscout's own food collection by the bridge.
+    func fetchSweetMirandaFoods() async throws -> [[String: Any]] {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.port = url.port
+        components.path = "/api/v1/food.json"
+        components.queryItems = [
+            URLQueryItem(name: "find[category]", value: "Sweet Miranda"),
+            URLQueryItem(name: "count", value: "500")
+        ]
+        guard let requestURL = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: requestURL)
+        request.timeoutInterval = Config.timeout
+        if let secret = secret {
+            request.addValue(secret.sha1(), forHTTPHeaderField: "api-secret")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+    }
+
     /// Sweet Miranda bridge: one raw treatment document, posted as-is.
     func uploadRawTreatment(_ document: [String: Any]) async throws {
         var components = URLComponents()
