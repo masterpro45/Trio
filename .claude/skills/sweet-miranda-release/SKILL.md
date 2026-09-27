@@ -23,6 +23,12 @@ The mini (`~/Developer/Trio`) has Xcode and an iOS Simulator; the cloud containe
 3. For screens behind taps, add temporary hooks marked `// SIMTEST` (skip onboarding, open a screen from an env var) and screenshot with `xcrun simctl io <sim> screenshot`.
 4. The SwiftFormat build phase rewrites sources. Commit its whitespace changes, and after removing test hooks grep for them **and recompile**, because the formatter can split a hook across lines.
 
+## 1c. When "the loop stopped" is the question
+
+- Check the CGM first. Since 2026-09-27 Trio reads her Dexcom G6 directly (that Bluetooth link is what wakes Trio with the phone locked); Trio's **Upload Glucose stays OFF** because the Dexcom Share bridge already fills Nightscout. With Nightscout as the CGM, only the pod could wake Trio, and Pod Keep Alive "When Open" meant no background loops (builds 4–11).
+- To prove whether our code changes the loop, run it side by side with stock Trio in two Simulators on the mini (bootstrap hook with her settings, a throwaway read-only Nightscout token, the pump simulator) and compare `Loop succeeded` counts. The Mac mini's Sweet Miranda skill has the recipe. Delete the throwaway token after.
+- Don't let a build watcher text Wilson at night; report in the session instead.
+
 ## 2. Build
 
 - From the mini: `~/.config/trio/gh.sh workflow run build_trio.yml -R masterpro45/Trio --ref <branch>` (and `build_LoopFollow.yml -R masterpro45/LoopFollow`). Both forks must keep `SCHEDULED_SYNC=false`, `SCHEDULED_BUILD=false`, `ENABLE_NUKE_CERTS=false`.
@@ -59,4 +65,4 @@ What a failure means:
 
 Last run through end to end: 2026-09-26, Trio 1.0.5 (build 9), LoopFollow Actions run 4. The approver was enrolled and the remote approval applied.
 
-Last installed: 2026-09-26, Trio 1.0.7 (build 11) on her phone: her home screen with carbs-first EAT + DOSE, the fixed Alerts/Settings crash, "50+" units, and the Luna icon. Screens were checked in the Simulator on the mini before the build.
+Built: 2026-09-27, Trio 1.0.10 (build 14, Activity Mode). Installed before that: 2026-09-26, Trio 1.0.7 (build 11) on her phone: her home screen with carbs-first EAT + DOSE, the fixed Alerts/Settings crash, "50+" units, and the Luna icon. Screens were checked in the Simulator on the mini before the build.
