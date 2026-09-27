@@ -20,6 +20,7 @@ This fork builds Trio for Miranda, who runs it on her iPhone with an Omnipod. It
 | 8 | 1.0.4 | `sweetmiranda-101` | Face ID approvals from a caregiver phone. |
 | 9 | 1.0.5 | `claude/approver-token-char-count-75brkh` | Remote approval requires a signed `smExpires`. Installed 2026-09-26. |
 | 10 | 1.0.6 | `sweetmiranda-101` | Her screen: "How many carbs?" first (typed or 10 USDA favorites), correction-only behind a 2 s hold, units left shows 50+ for the Omnipod sentinel, EAT + DOSE text fixed, Alerts/Settings no longer crash (skin provides `SettingsSearchHighlight`), treatment screen opened through the router. |
+| 11 | 1.0.7 | `sweetmiranda-101` | App icon is Luna, the family schnoodle (`design/luna_icon.svg`): `APP_ICON = luna`, `Icon_.primary = "luna"`, stock `trioBlack` kept as an alternate. Icons must be 1024 px with no alpha channel. |
 
 ## Where the code is
 
