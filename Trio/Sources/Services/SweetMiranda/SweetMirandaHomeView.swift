@@ -38,6 +38,9 @@ extension SweetMiranda {
         private let dreamClock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
         /// Pod Keep Alive, re-read when she comes back to the screen (reading pump state each frame is wasteful).
         @State private var keepAliveLoopsWhenLocked: Bool?
+        /// Alerts she closed with ✕. One comes back only after its problem went away and returned
+        /// (next pod, next sensor…), so ✕ means "done, got it" for this time.
+        @AppStorage("sweetMiranda.dismissedNudges") private var dismissedNudgesRaw = ""
         @ObservedObject private var foods = SweetMirandaFoodStore.shared
         /// Stock HomeRootView provides this to everything under it; Settings and Glucose Alarms
         /// read it from the environment and crash without it, so the skin provides its own.
@@ -158,7 +161,10 @@ extension SweetMiranda {
             } message: { mode in
                 Text(modeSummary(mode))
             }
-            .onReceive(dreamClock) { _ in tickDream() }
+            .onReceive(dreamClock) { _ in
+                tickDream()
+                forgetSolvedNudges()
+            }
             .alert(
                 "Mode",
                 isPresented: Binding(get: { modeMessage != nil }, set: { if !$0 { modeMessage = nil } }),
@@ -352,6 +358,7 @@ extension SweetMiranda {
         private func refreshDeviceFacts() {
             keepAliveLoopsWhenLocked = SweetMirandaPodKeepAlive
                 .loopsWhenLocked(resolver.resolve(DeviceDataManager.self)?.pumpManager)
+            forgetSolvedNudges()
             let nightscout = resolver.resolve(NightscoutManager.self)
             Task { await SweetMirandaFoodStore.shared.refresh(nightscout: nightscout) }
             Task { await loadModePresets() }
@@ -405,7 +412,8 @@ extension SweetMiranda {
 
         private var header: some View {
             HStack(spacing: 8) {
-                SweetMirandaBubbleName(text: "miranda")
+                SweetMirandaBubbleName(text: "Miranda")
+                SweetMirandaPaw()
 
                 Spacer()
 
@@ -506,42 +514,89 @@ extension SweetMiranda {
         // MARK: - Nudge
 
         /// One line, only when something genuinely needs her to do something today.
-        private var nudge: String? {
-            if let hours = podHoursLeft, hours <= 8 {
-                return String(
-                    format: String(localized: "Pod runs out in %d hours — grab a new one"),
-                    Int(hours.rounded())
-                )
-            }
-            if keepAliveLoopsWhenLocked == false {
-                return String(localized: "Trio only loops while it's open. Ask Dad to set Pod Keep Alive to Silent Tune")
-            }
-            if let days = sensorDaysLeft, days <= 1 {
-                return String(localized: "Sensor ends tomorrow — pack a new one")
-            }
-            if let units = reservoirUnits, units <= 20 {
-                return String(
-                    format: String(localized: "Only %d units left in the pod"),
-                    Int(units.rounded())
-                )
-            }
-            if sensor.startedAt == nil, !cgmKnowsSensorAge {
-                return String(localized: "Tell Trio when you put your sensor on: tap the sensor circle")
-            }
-            return nil
+        private enum NudgeKind: String, CaseIterable {
+            case podEnding
+            case keepAlive
+            case sensorEnding
+            case podLow
+            case sensorDate
         }
 
-        private func nudgeBar(_ text: String) -> some View {
+        /// Every alert that applies right now, most important first.
+        private var nudges: [(kind: NudgeKind, text: String)] {
+            var out: [(kind: NudgeKind, text: String)] = []
+            if let hours = podHoursLeft, hours <= 8 {
+                out.append((.podEnding, String(
+                    format: String(localized: "Pod runs out in %d hours — grab a new one"),
+                    Int(hours.rounded())
+                )))
+            }
+            // Only matters without a CGM heartbeat: her G6 wakes Trio with the phone locked (2026-09-27).
+            if keepAliveLoopsWhenLocked == false, !cgmKnowsSensorAge {
+                out
+                    .append((
+                        .keepAlive,
+                        String(localized: "Trio only loops while it's open. Ask Dad to set Pod Keep Alive to Silent Tune")
+                    ))
+            }
+            if let days = sensorDaysLeft, days <= 1 {
+                out.append((.sensorEnding, String(localized: "Sensor ends tomorrow — pack a new one")))
+            }
+            if let units = reservoirUnits, units <= 20 {
+                out.append((.podLow, String(
+                    format: String(localized: "Only %d units left in the pod"),
+                    Int(units.rounded())
+                )))
+            }
+            if sensor.startedAt == nil, !cgmKnowsSensorAge {
+                out.append((.sensorDate, String(localized: "Tell Trio when you put your sensor on: tap the sensor circle")))
+            }
+            return out
+        }
+
+        private var dismissedNudges: Set<String> {
+            Set(dismissedNudgesRaw.split(separator: ",").map(String.init))
+        }
+
+        /// The first alert she hasn't closed.
+        private var nudge: (kind: NudgeKind, text: String)? {
+            nudges.first { !dismissedNudges.contains($0.kind.rawValue) }
+        }
+
+        /// A closed alert whose problem has gone away is forgotten, so it shows again next time.
+        private func forgetSolvedNudges() {
+            let live = Set(nudges.map(\.kind.rawValue))
+            let kept = dismissedNudges.intersection(live)
+            if kept != dismissedNudges { dismissedNudgesRaw = kept.sorted().joined(separator: ",") }
+        }
+
+        private func dismissNudge(_ kind: NudgeKind) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                dismissedNudgesRaw = dismissedNudges.union([kind.rawValue]).sorted().joined(separator: ",")
+            }
+        }
+
+        private func nudgeBar(_ item: (kind: NudgeKind, text: String)) -> some View {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(SweetMirandaPalette.amber)
-                Text(text)
+                Text(item.text)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(SweetMirandaPalette.amber.opacity(0.95))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+                Button { dismissNudge(item.kind) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(SweetMirandaPalette.amber.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close this alert")
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 14)
+            .padding(.trailing, 4)
             .padding(.vertical, 10)
             .background(SweetMirandaPalette.amber.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
             .padding(.horizontal, 20)
@@ -1505,6 +1560,31 @@ struct SMModePreset {
 }
 
 // MARK: - Her name
+
+/// Luna's paw print after her name, in the same glossy pink as the letters.
+struct SweetMirandaPaw: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(SweetMirandaPalette.pinkDeep)
+                .offset(x: 1.2, y: 2.4)
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(red: 1.0, green: 0.80, blue: 0.91), SweetMirandaPalette.pink],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+        .rotationEffect(.degrees(-18))
+        .shadow(color: SweetMirandaPalette.pink.opacity(0.55), radius: 8, y: 2)
+        .padding(.leading, -2)
+        .accessibilityHidden(true)
+    }
+}
 
 /// Her name in bubbly pink 3-D letters: a darker extruded side, a glossy pink face, a white
 /// shine on the upper half and a soft glow.
