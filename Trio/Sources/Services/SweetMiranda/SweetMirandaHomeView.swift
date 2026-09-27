@@ -24,6 +24,11 @@ extension SweetMiranda {
         @State private var showSettings = false
         @State private var showAlerts = false
         @State private var showSensor = false
+        /// Sports / Dream: Trio's own override presets, found by name.
+        @State private var modePresets: [SweetMirandaMode: SMModePreset] = [:]
+        @State private var confirmMode: SweetMirandaMode?
+        @State private var modeMessage: String?
+        @State private var modeBusy = false
         /// Pod Keep Alive, re-read when she comes back to the screen (reading pump state each frame is wasteful).
         @State private var keepAliveLoopsWhenLocked: Bool?
         @ObservedObject private var foods = SweetMirandaFoodStore.shared
@@ -44,6 +49,7 @@ extension SweetMiranda {
                     glucoseBlock
                     graphCard
                     statsRow
+                    modesRow
                     Spacer(minLength: 8)
                     bottomBar
                 }
@@ -93,7 +99,142 @@ extension SweetMiranda {
                     )
                 }
             }
+            .confirmationDialog(
+                confirmMode
+                    .map { modePresets[$0] == nil ? "\($0.presetName) isn't set up yet" : "Start \($0.presetName)?" } ?? "",
+                isPresented: Binding(get: { confirmMode != nil }, set: { if !$0 { confirmMode = nil } }),
+                titleVisibility: .visible,
+                presenting: confirmMode
+            ) { mode in
+                if modePresets[mode] != nil {
+                    Button("Start \(mode.presetName)") { startMode(mode) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { mode in
+                Text(modeSummary(mode))
+            }
+            .alert(
+                "Mode",
+                isPresented: Binding(get: { modeMessage != nil }, set: { if !$0 { modeMessage = nil } }),
+                actions: { Button("OK", role: .cancel) {} },
+                message: { Text(modeMessage ?? "") }
+            )
             .environment(settingsSearchHighlight)
+        }
+
+        // MARK: - Sports / Dream
+
+        /// Her two easy buttons. They only switch Trio's own override presets on and off — the
+        /// preset named "Sports Mode" or "Dream Mode" (set up in Trio ▸ Adjustments by her parents
+        /// and care team). Nothing here chooses a number. Starting one asks first and says what it does.
+        private var modesRow: some View {
+            HStack(spacing: 10) {
+                ForEach(SweetMirandaMode.allCases) { modeButton($0) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+        }
+
+        private func isActive(_ mode: SweetMirandaMode) -> Bool {
+            state.overrides.contains { $0.enabled && ($0.name ?? "").localizedCaseInsensitiveContains(mode.keyword) }
+        }
+
+        private func modeButton(_ mode: SweetMirandaMode) -> some View {
+            let active = isActive(mode)
+            return Button {
+                if active { endMode(mode) } else { confirmMode = mode }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 18, weight: .bold))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(mode.presetName)
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(active ? "ON · tap to stop" : (modePresets[mode] == nil ? "not set up" : "tap to start"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .opacity(0.85)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(active ? SweetMirandaPalette.ink : mode.tint)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(active ? mode.tint : mode.tint.opacity(0.14))
+                        .shadow(color: active ? mode.tint.opacity(0.6) : .clear, radius: 10)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(modeBusy)
+            .accessibilityLabel(Text(mode.presetName + (active ? ", on" : "")))
+        }
+
+        private func modeSummary(_ mode: SweetMirandaMode) -> String {
+            guard let p = modePresets[mode] else {
+                return "Ask Mom or Dad to add an adjustment preset named “\(mode.presetName)” in Trio ▸ Adjustments. The numbers come from them and your care team."
+            }
+            var parts = ["Insulin \(Int(p.percentage.rounded()))%"]
+            if let t = p.target, t > 0 { parts.append("target \(t) mg/dL") }
+            if p.indefinite {
+                parts.append("until you stop it")
+            } else if let m = p.minutes, m > 0 {
+                parts.append("for \(m) min")
+            }
+            return parts.joined(separator: " · ")
+        }
+
+        private func startMode(_ mode: SweetMirandaMode) {
+            guard let preset = modePresets[mode], let manager = resolver.resolve(AdjustmentManager.self) else { return }
+            modeBusy = true
+            Task { @MainActor in
+                defer { modeBusy = false }
+                do {
+                    try await manager.activateOverride(.presetID(preset.id), source: .app, waitForUpload: false)
+                } catch {
+                    modeMessage = "Couldn't start \(mode.presetName): \(error.localizedDescription)"
+                }
+            }
+        }
+
+        private func endMode(_ mode: SweetMirandaMode) {
+            guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
+            modeBusy = true
+            Task { @MainActor in
+                defer { modeBusy = false }
+                do {
+                    try await manager.cancelOverride(source: .app, waitForUpload: false)
+                } catch AdjustmentError.nothingActive {
+                } catch {
+                    modeMessage = "Couldn't stop \(mode.presetName): \(error.localizedDescription)"
+                }
+            }
+        }
+
+        @MainActor private func loadModePresets() async {
+            guard let storage = resolver.resolve(OverrideStorage.self),
+                  let ids = try? await storage.fetchForOverridePresets() else { return }
+            let context = CoreDataStack.shared.persistentContainer.viewContext
+            var found: [SweetMirandaMode: SMModePreset] = [:]
+            for objectID in ids {
+                guard let o = try? context.existingObject(with: objectID) as? OverrideStored,
+                      let name = o.name, let id = o.id else { continue }
+                for mode in SweetMirandaMode.allCases
+                    where found[mode] == nil && name.localizedCaseInsensitiveContains(mode.keyword)
+                {
+                    found[mode] = SMModePreset(
+                        id: id,
+                        name: name,
+                        percentage: o.percentage,
+                        target: o.target as Decimal?,
+                        minutes: o.duration as Decimal?,
+                        indefinite: o.indefinite
+                    )
+                }
+            }
+            modePresets = found
         }
 
         /// Pod Keep Alive and her food list: things that live outside Home.StateModel.
@@ -102,6 +243,31 @@ extension SweetMiranda {
                 .loopsWhenLocked(resolver.resolve(DeviceDataManager.self)?.pumpManager)
             let nightscout = resolver.resolve(NightscoutManager.self)
             Task { await SweetMirandaFoodStore.shared.refresh(nightscout: nightscout) }
+            Task { await loadModePresets() }
+        }
+
+        /// A CGM Trio talks to itself (her G6 since 2026-09-27) reports its own sensor age; the
+        /// hand-entered date is only for a CGM that can't (Nightscout as the source).
+        private var cgmKnowsSensorAge: Bool {
+            resolver.resolve(FetchGlucoseManager.self)?.cgmManager != nil
+        }
+
+        /// Days left on the sensor: from the CGM when it knows, else from the date she entered.
+        /// `cgmSensorExpiresAt` already prefers the CGM and falls back to her date.
+        private var sensorDaysLeft: Int? {
+            if let expires = state.cgmSensorExpiresAt {
+                return max(0, Int((expires.timeIntervalSinceNow / 86400).rounded(.up)))
+            }
+            return sensor.daysRemaining
+        }
+
+        /// The sensor circle: Trio's own CGM screen when a CGM is connected, else her date screen.
+        private func openSensor() {
+            if cgmKnowsSensorAge {
+                state.showModal(for: .cgm)
+            } else {
+                showSensor = true
+            }
         }
 
         /// The pod circles open Trio's pump screen, the same tap as the pump on stock Home.
@@ -126,9 +292,7 @@ extension SweetMiranda {
 
         private var header: some View {
             HStack(spacing: 8) {
-                Text("miranda")
-                    .font(.custom(SweetMirandaPalette.display, size: 19).weight(.heavy))
-                    .foregroundStyle(SweetMirandaPalette.text)
+                SweetMirandaBubbleName(text: "miranda")
 
                 Spacer()
 
@@ -177,13 +341,13 @@ extension SweetMiranda {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint(Text("Opens the pump settings to change the pod"))
-                Button { showSensor = true } label: {
+                Button(action: openSensor) {
                     SweetMirandaOrb(
-                        value: Double(sensor.daysRemaining ?? 0),
+                        value: Double(sensorDaysLeft ?? 0),
                         maximum: sensor.lifetimeDays,
-                        label: sensor.daysRemaining.map { "\($0)d" } ?? "—",
+                        label: sensorDaysLeft.map { "\($0)d" } ?? "—",
                         caption: String(localized: "SENSOR DAYS"),
-                        state: sensor.progressState()
+                        state: cgmKnowsSensorAge ? nil : sensor.progressState()
                     )
                 }
                 .buttonStyle(.plain)
@@ -236,7 +400,7 @@ extension SweetMiranda {
             if keepAliveLoopsWhenLocked == false {
                 return String(localized: "Trio only loops while it's open. Ask Dad to set Pod Keep Alive to Silent Tune")
             }
-            if let days = sensor.daysRemaining, days <= 1 {
+            if let days = sensorDaysLeft, days <= 1 {
                 return String(localized: "Sensor ends tomorrow — pack a new one")
             }
             if let units = reservoirUnits, units <= 20 {
@@ -245,7 +409,7 @@ extension SweetMiranda {
                     Int(units.rounded())
                 )
             }
-            if sensor.startedAt == nil {
+            if sensor.startedAt == nil, !cgmKnowsSensorAge {
                 return String(localized: "Tell Trio when you put your sensor on: tap the sensor circle")
             }
             return nil
@@ -1021,5 +1185,67 @@ extension SweetMiranda {
             }
             .accessibilityLabel("Hold for two seconds to open a correction with no carbs")
         }
+    }
+}
+
+// MARK: - Sports / Dream modes
+
+enum SweetMirandaMode: String, CaseIterable, Identifiable, Hashable {
+    case sports
+    case dream
+
+    var id: String { rawValue }
+    var presetName: String { self == .sports ? "Sports Mode" : "Dream Mode" }
+    /// Matched case-insensitively inside the preset's name.
+    var keyword: String { self == .sports ? "sport" : "dream" }
+    var icon: String { self == .sports ? "figure.run" : "moon.stars.fill" }
+    var tint: Color { self == .sports ? SweetMirandaPalette.mint : SweetMirandaPalette.lilac }
+}
+
+/// What a Trio override preset does, for the "Start …?" question.
+struct SMModePreset {
+    let id: String
+    let name: String
+    let percentage: Double
+    let target: Decimal?
+    let minutes: Decimal?
+    let indefinite: Bool
+}
+
+// MARK: - Her name
+
+/// Her name in bubbly pink 3-D letters: a darker extruded side, a glossy pink face, a white
+/// shine on the upper half and a soft glow.
+struct SweetMirandaBubbleName: View {
+    let text: String
+
+    private var font: Font { .system(size: 30, weight: .black, design: .rounded) }
+
+    var body: some View {
+        ZStack {
+            ForEach(Array((1 ... 4).reversed()), id: \.self) { i in
+                Text(text)
+                    .font(font)
+                    .foregroundStyle(SweetMirandaPalette.pinkDeep)
+                    .offset(x: CGFloat(i) * 0.6, y: CGFloat(i) * 1.2)
+            }
+            Text(text)
+                .font(font)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(red: 1.0, green: 0.80, blue: 0.91), SweetMirandaPalette.pink],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            Text(text)
+                .font(font)
+                .foregroundStyle(
+                    LinearGradient(colors: [.white.opacity(0.8), .white.opacity(0)], startPoint: .top, endPoint: .center)
+                )
+        }
+        .shadow(color: SweetMirandaPalette.pink.opacity(0.55), radius: 10, y: 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(text))
     }
 }

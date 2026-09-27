@@ -28,6 +28,8 @@ extension Treatments {
         /// Sweet Miranda: carbs came from her Eat screen, so fill the Bolus field with Trio's own
         /// recommendation once it is calculated — until she types her own amount.
         @State private var sweetMirandaPrefill = false
+        /// Sweet Miranda: her colours on this screen while her home screen is on (off = stock Trio).
+        private var sweetMirandaSkin: Bool { SweetMirandaSkin.shared.isEnabled }
         @State private var sweetMirandaPrefilled: Decimal = 0
 
         private enum Config {
@@ -224,7 +226,7 @@ extension Treatments {
                         Section {
                             ForecastChart(state: state)
                                 .padding(.vertical)
-                        }.listRowBackground(Color.chart)
+                        }.listRowBackground(sweetMirandaSkin ? Color.white.opacity(0.06) : Color.chart)
 
                         Section {
                             carbsTextField()
@@ -301,7 +303,11 @@ extension Treatments {
                                     maxLength: 25
                                 )
                             }
-                        }.listRowBackground(Color.chart)
+                        }
+                        .listRowBackground(
+                            sweetMirandaSkin ? Color(red: 1.0, green: 0.55, blue: 0.2).opacity(0.30) : Color
+                                .chart
+                        )
 
                         Section {
                             if state.fattyMeals || state.sweetMeals {
@@ -406,7 +412,7 @@ extension Treatments {
                                 Spacer()
                                 Toggle("", isOn: $state.externalInsulin).toggleStyle(CheckboxToggleStyle())
                             }
-                        }.listRowBackground(Color.chart)
+                        }.listRowBackground(sweetMirandaSkin ? SweetMirandaPalette.mint.opacity(0.38) : Color.chart)
 
                         treatmentButton
                     }
@@ -420,7 +426,20 @@ extension Treatments {
             }
             .padding(.top)
             .ignoresSafeArea(edges: .top)
-            .scrollContentBackground(.hidden).background(appState.trioBackgroundColor(for: colorScheme))
+            .scrollContentBackground(.hidden)
+            .background {
+                if sweetMirandaSkin {
+                    LinearGradient(
+                        colors: [SweetMirandaPalette.ground, Color(red: 0.30, green: 0.08, blue: 0.20)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    appState.trioBackgroundColor(for: colorScheme)
+                }
+            }
+            .preferredColorScheme(sweetMirandaSkin ? .dark : nil)
             .blur(radius: state.showInfo ? 3 : 0)
             .navigationTitle("Treatments")
             .navigationBarTitleDisplayMode(.inline)
@@ -530,7 +549,7 @@ extension Treatments {
         var treatmentButton: some View {
             let shouldDisplayBolusProgress = bolusInProgressForEntry
 
-            var treatmentButtonBackground = Color(.systemBlue)
+            var treatmentButtonBackground = sweetMirandaSkin ? SweetMirandaPalette.pink : Color(.systemBlue)
             if limitExceeded {
                 treatmentButtonBackground = Color(.systemRed)
             } else if disableTaskButton {
@@ -551,10 +570,12 @@ extension Treatments {
                         }
                     } label: {
                         HStack {
-                            taskButtonLabel
+                            sweetMirandaButtonLabel
                         }
-                        .font(.headline)
-                        .foregroundStyle(Color.white)
+                        .font(sweetMirandaSkin ? .system(size: 19, weight: .heavy, design: .rounded) : .headline)
+                        .foregroundStyle(
+                            sweetMirandaSkin && !limitExceeded && !disableTaskButton ? SweetMirandaPalette.ink : Color.white
+                        )
                         .frame(maxWidth: .infinity, alignment: .center)
                         .frame(height: 35)
                     }
@@ -661,6 +682,20 @@ extension Treatments {
                     .padding(.bottom, 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 15))
+        }
+
+        /// Sweet Miranda: a short label that always says what will happen — "BOLUS 9 U" names the
+        /// amount on the button she presses; with no insulin it saves carbs and says so. Limits,
+        /// external insulin and fat/protein keep Trio's own wording.
+        @ViewBuilder private var sweetMirandaButtonLabel: some View {
+            let plain = sweetMirandaSkin && !limitExceeded && !state.externalInsulin && state.fat == 0 && state.protein == 0
+            if plain, state.amount > 0 {
+                Text("BOLUS \(state.amount.description) U")
+            } else if plain, state.amount == 0, state.carbs > 0 {
+                Text("SAVE CARBS")
+            } else {
+                taskButtonLabel
+            }
         }
 
         private var taskButtonLabel: some View {
