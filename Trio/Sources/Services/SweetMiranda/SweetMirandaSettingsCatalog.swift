@@ -24,49 +24,73 @@ enum SweetMirandaSettingsCatalog {
     ]
 
     /// Numeric bounds (inclusive). Anything outside is refused before Face ID is even asked.
+    /// Each range is the narrower of ours and Trio's own settings screen (`DecimalPickerSettings`), so a
+    /// proposal can never set a value a person could not pick in Trio itself (2026-09-28: DIA 3 was
+    /// accepted here, Trio's loop requires at least 5 and stopped).
     static let bounds: [String: ClosedRange<Double>] = [
-        "pref.max_iob": 0 ... 30,
-        "pref.autosens_max": 1 ... 3,
-        "pref.autosens_min": 0.1 ... 1,
-        "pref.smb_delivery_ratio": 0.3 ... 0.7,
-        "pref.maxSMBBasalMinutes": 30 ... 180,
-        "pref.maxUAMSMBBasalMinutes": 30 ... 180,
-        "pref.SMBInterval": 1 ... 10,
-        "pref.half_basal_exercise_target": 100 ... 300,
-        "pref.maxCOB": 0 ... 300,
-        "pref.enableSMB_high_bg_target": 70 ... 300,
-        "pref.threshold_setting": 60 ... 120,
-        "pref.adjustmentFactor": 0.1 ... 3,
-        "pref.adjustmentFactorSigmoid": 0.1 ... 3,
-        "pref.weightPercentage": 0 ... 1,
-        "pref.bolus_increment": 0.05 ... 1,
-        "pref.insulinPeakTime": 35 ... 120,
-        "pref.maxDelta_bg_threshold": 0.1 ... 0.4,
-        "pref.max_daily_safety_multiplier": 1 ... 10,
-        "pref.current_basal_safety_multiplier": 1 ... 10,
-        "pref.min_5m_carbimpact": 1 ... 30,
-        "pref.remainingCarbsFraction": 0 ... 1,
-        "pref.remainingCarbsCap": 0 ... 200,
-        "pref.carbsReqThreshold": 0 ... 50,
-        "pref.noisyCGMTargetMultiplier": 1 ... 3,
-        "pref.maxMealAbsorptionTime": 1 ... 12,
-        "pref.updateInterval": 5 ... 60,
-        "pump.maxBolus": 0.5 ... 30,
-        "pump.maxBasal": 0.1 ... 30,
-        "pump.insulin_action_curve": 3 ... 14,
-        "settings.low": 40 ... 120,
-        "settings.high": 120 ... 400,
-        "settings.maxCarbs": 0 ... 500,
-        "settings.maxFat": 0 ... 500,
-        "settings.maxProtein": 0 ... 500,
-        "settings.individualAdjustmentFactor": 0.1 ... 1,
-        "settings.fattyMealFactor": 0.1 ... 1,
-        "settings.sweetMealFactor": 0.5 ... 2,
-        "settings.overrideFactor": 0.1 ... 1,
-        "settings.carbsRequiredThreshold": 0 ... 100,
-        "settings.minuteInterval": 5 ... 120,
-        "settings.delay": 0 ... 240
+        "pref.max_iob": 0 ... 30, // maxIOB 0…30
+        "pref.autosens_max": 1 ... 2, // autosensMax 0.5…2
+        "pref.autosens_min": 0.5 ... 1, // autosensMin 0.5…1
+        "pref.smb_delivery_ratio": 0.3 ... 0.7, // smbDeliveryRatio 0.3…0.7
+        "pref.maxSMBBasalMinutes": 30 ... 180, // 15…180
+        "pref.maxUAMSMBBasalMinutes": 30 ... 180, // 15…180
+        "pref.SMBInterval": 1 ... 10, // smbInterval 1…10
+        "pref.half_basal_exercise_target": 105 ... 300, // halfBasalExerciseTarget 105…300
+        "pref.maxCOB": 0 ... 300, // maxCOB 0…300
+        "pref.enableSMB_high_bg_target": 70 ... 200, // enableSMB_high_bg_target 70…200
+        "pref.threshold_setting": 60 ... 120, // threshold_setting 60…120
+        "pref.adjustmentFactor": 0.3 ... 3, // adjustmentFactor 0.3…3
+        "pref.adjustmentFactorSigmoid": 0.1 ... 2, // adjustmentFactorSigmoid 0.1…2
+        "pref.weightPercentage": 0.05 ... 1, // weightPercentage 0.05…1
+        "pref.bolus_increment": 0.05 ... 1, // bolusIncrement 0.05…1
+        "pref.insulinPeakTime": 35 ... 120, // insulinPeakTime 35…120
+        "pref.maxDelta_bg_threshold": 0.1 ... 0.4, // maxDeltaBGthreshold 0.1…0.4
+        "pref.max_daily_safety_multiplier": 1 ... 5, // maxDailySafetyMultiplier 1…5
+        "pref.current_basal_safety_multiplier": 1 ... 5, // currentBasalSafetyMultiplier 1…5
+        "pref.min_5m_carbimpact": 1 ... 20, // min5mCarbimpact 1…20
+        "pref.remainingCarbsFraction": 0.5 ... 1, // remainingCarbsFraction 0.5…1
+        "pref.remainingCarbsCap": 0 ... 200, // remainingCarbsCap 0…200
+        "pref.carbsReqThreshold": 0 ... 10, // carbsReqThreshold 0…10
+        "pref.noisyCGMTargetMultiplier": 1 ... 2, // noisyCGMTargetMultiplier 1…2
+        "pref.maxMealAbsorptionTime": 4 ... 10, // maxMealAbsorptionTime 4…10
+        "pref.updateInterval": 5 ... 60, // updateInterval 1…60
+        "pump.maxBolus": 0.5 ... 30, // maxBolus 0.5…30
+        "pump.maxBasal": 0.5 ... 30, // maxBasal 0.5…30
+        "pump.insulin_action_curve": 5 ... 10, // dia 5…10 (the loop refuses < 5)
+        "settings.low": 40 ... 100, // low 40…100
+        "settings.high": 120 ... 400, // high 100…400
+        "settings.maxCarbs": 0 ... 300, // maxCarbs 0…300
+        "settings.maxFat": 0 ... 300, // maxFat 0…300
+        "settings.maxProtein": 0 ... 300, // maxProtein 0…300
+        "settings.individualAdjustmentFactor": 0.1 ... 1, // 0.1…1.2
+        "settings.fattyMealFactor": 0.1 ... 1, // 0.05…1
+        "settings.sweetMealFactor": 0.5 ... 2, // 0.05…2
+        "settings.overrideFactor": 0.1 ... 1, // 0.05…1.5
+        "settings.carbsRequiredThreshold": 0 ... 100, // carbsRequiredThreshold 0…100
+        "settings.minuteInterval": 30 ... 60, // minuteInterval 30…60
+        "settings.delay": 15 ... 120 // delay 15…120
     ]
+
+    /// Preference values Trio accepts in its model but its loop cannot run with.
+    /// `bilinear`: `IobCalculation.lookupPeak` has no peak for it, so every loop stops with an IOB error.
+    static let refusedPreferenceValues: [String: Set<String>] = [
+        "curve": [InsulinCurve.bilinear.rawValue]
+    ]
+
+    /// Preferences a proposal may never set (bookkeeping, not a setting).
+    static let refusedPreferences: Set<String> = ["timestamp"]
+
+    /// Keys whose values Trio's loop reads: a proposal touching any of them gets the loop preflight
+    /// and is watched after it is applied (rolled back if the loop fails with it).
+    static let loopSettingsKeys: Set<String> = ["settings.dosingMode", "settings.smoothGlucose"]
+
+    static func touchesLoop(_ changes: [String: Any]) -> Bool {
+        changes.keys.contains { k in
+            k.hasPrefix(SweetMiranda.Key.prefPrefix) || k.hasPrefix(SweetMiranda.Key.pumpPrefix)
+                || [SweetMiranda.Key.basal, SweetMiranda.Key.isf, SweetMiranda.Key.cr, SweetMiranda.Key.targets].contains(k)
+                || loopSettingsKeys.contains(k)
+        }
+    }
 
     static let scheduleBounds: [String: ClosedRange<Double>] = [
         SweetMiranda.Key.basal: 0.05 ... 30,
@@ -147,8 +171,15 @@ enum SweetMirandaSettingsCatalog {
         for (key, raw) in changes.sorted(by: { $0.key < $1.key }) {
             if key.hasPrefix(SweetMiranda.Key.prefPrefix) {
                 let k = String(key.dropFirst(SweetMiranda.Key.prefPrefix.count))
+                guard !refusedPreferences.contains(k) else { throw SMError.invalid("Preference \(k) cannot be changed remotely") }
                 guard let old = prefNow[k] else { throw SMError.invalid("Unknown preference \(k)") }
                 try checkScalar(key: key, new: raw, old: old)
+                if let refused = refusedPreferenceValues[k], let s = raw as? String, refused.contains(s) {
+                    throw SMError.invalid(
+                        "\(prettyPref(k)) \"\(s)\" is not supported by Trio's loop (it cannot compute insulin on board " +
+                            "with it and stops). Use rapid-acting or ultra-rapid."
+                    )
+                }
                 lines.append(SMChangeLine(id: key, group: "Algorithm", label: prettyPref(k), from: show(old), to: show(raw)))
             } else if key.hasPrefix(SweetMiranda.Key.settingsPrefix) {
                 let k = String(key.dropFirst(SweetMiranda.Key.settingsPrefix.count))
@@ -234,7 +265,134 @@ enum SweetMirandaSettingsCatalog {
             }
         }
         guard !lines.isEmpty else { throw SMError.invalid("The proposal contains no changes") }
+        try checkCrossField(changes: changes, against: current)
         return lines
+    }
+
+    /// Rules between two values, checked on what the phone would have after the proposal
+    /// (a changed value, else the one in use now). Only when the proposal touches one of the pair.
+    static func checkCrossField(changes: [String: Any], against current: Sources) throws {
+        let maxBasalKey = SweetMiranda.Key.pumpPrefix + "maxBasal"
+        let basalRaw = changes[SweetMiranda.Key.basal]
+        if basalRaw != nil || changes[maxBasalKey] != nil {
+            let maxBasal = changes[maxBasalKey].flatMap(decimal) ?? current.pump.maxBasal
+            let rates = try basalRaw.map { try parseBasal($0, supported: current.supportedBasalRates).map(\.rate) }
+                ?? current.basal.map(\.rate)
+            if let top = rates.max(), top > maxBasal {
+                throw SMError.invalid(
+                    "The basal schedule goes up to \(show(num(top))) U/h, above the max basal rate of \(show(num(maxBasal))) U/h"
+                )
+            }
+        }
+
+        let aMaxKey = SweetMiranda.Key.prefPrefix + "autosens_max"
+        let aMinKey = SweetMiranda.Key.prefPrefix + "autosens_min"
+        if changes[aMaxKey] != nil || changes[aMinKey] != nil {
+            let aMax = changes[aMaxKey].flatMap(decimal) ?? current.preferences.autosensMax
+            let aMin = changes[aMinKey].flatMap(decimal) ?? current.preferences.autosensMin
+            guard aMin <= aMax else {
+                throw SMError.invalid("Autosens min (\(show(num(aMin)))) cannot be above autosens max (\(show(num(aMax))))")
+            }
+        }
+
+        let lowKey = SweetMiranda.Key.settingsPrefix + "low"
+        let highKey = SweetMiranda.Key.settingsPrefix + "high"
+        if changes[lowKey] != nil || changes[highKey] != nil {
+            let low = changes[lowKey].flatMap(decimal) ?? current.settings.low
+            let high = changes[highKey].flatMap(decimal) ?? current.settings.high
+            guard low < high else {
+                throw SMError.invalid("The low glucose line (\(show(num(low)))) must be below the high line (\(show(num(high))))")
+            }
+        }
+    }
+
+    private static func num(_ d: Decimal) -> NSNumber { NSNumber(value: dbl(d)) }
+
+    // MARK: - Would-be settings and the loop preflight
+
+    /// A proposal parsed once into the values Trio stores. The same values are preflighted and applied;
+    /// nil means the proposal leaves that part alone.
+    struct Parsed {
+        var pump: PumpSettings?
+        var basal: [BasalProfileEntry]?
+        var isf: InsulinSensitivities?
+        var cr: CarbRatios?
+        var targets: BGTargets?
+        var preferences: Preferences?
+        var settings: TrioSettings?
+    }
+
+    static func parse(changes: [String: Any], current: Sources) throws -> Parsed {
+        var p = Parsed()
+        p.pump = newPumpSettings(current.pump, changes: changes)
+        if let raw = changes[SweetMiranda.Key.basal] { p.basal = try parseBasal(raw, supported: current.supportedBasalRates) }
+        if let raw = changes[SweetMiranda.Key.isf] { p.isf = try parseISF(raw) }
+        if let raw = changes[SweetMiranda.Key.cr] { p.cr = try parseCR(raw) }
+        if let raw = changes[SweetMiranda.Key.targets] { p.targets = try parseTargets(raw) }
+        if changes.keys.contains(where: { $0.hasPrefix(SweetMiranda.Key.prefPrefix) }) {
+            p.preferences = try newPreferences(current.preferences, changes: changes)
+        }
+        if changes.keys.contains(where: { $0.hasPrefix(SweetMiranda.Key.settingsPrefix) }) {
+            p.settings = try newSettings(current.settings, changes: changes)
+        }
+        return p
+    }
+
+    /// Throws when Trio's loop would refuse the settings the phone would have after `p` (see `loopProblem`).
+    static func preflight(_ p: Parsed, current: Sources, now: Date = Date()) throws {
+        if let why = loopProblem(p, current: current, now: now) {
+            throw SMError.invalid("Trio's loop would refuse these settings, so nothing was changed. The algorithm says: \(why)")
+        }
+    }
+
+    /// Runs Trio's own profile builder — the first step of every loop cycle — on the settings the phone
+    /// would have after `p`, at every schedule boundary of the day and now, and checks the insulin curve
+    /// the way the IOB calculation does. Returns the algorithm's own words if the loop would refuse them,
+    /// nil if it accepts them. Pure: reads nothing from storage, writes nothing.
+    static func loopProblem(_ p: Parsed, current: Sources, now: Date = Date()) -> String? {
+        let pump = p.pump ?? current.pump
+        let basal = p.basal ?? current.basal
+        let isf = p.isf ?? current.isf
+        let cr = p.cr ?? current.cr
+        let targets = p.targets ?? current.targets
+        let mode = (p.settings ?? current.settings).dosingMode
+        // the loop hands the profile builder these, clamped for the loop mode (OpenAPS.createProfiles)
+        let prefs = (p.preferences ?? current.preferences).clamped(for: mode)
+
+        guard IobCalculation.lookupPeak(
+            curve: prefs.curve,
+            useCustomPeakTime: prefs.useCustomPeakTime,
+            insulinPeakTime: prefs.insulinPeakTime
+        ) != nil else {
+            return "the insulin curve \"\(prefs.curve.rawValue)\" is not supported (no insulin peak time)"
+        }
+
+        var minutes = Set(stride(from: 0, to: 1440, by: 30))
+        minutes.formUnion(basal.map(\.minutes))
+        minutes.formUnion(isf.sensitivities.map(\.offset))
+        minutes.formUnion(cr.schedule.map(\.offset))
+        minutes.formUnion(targets.targets.map(\.offset))
+        let day = Calendar.current.startOfDay(for: now)
+        let clocks = [now] + minutes.filter { $0 >= 0 && $0 < 1440 }.sorted()
+            .map { day.addingTimeInterval(TimeInterval($0 * 60)) }
+        for clock in clocks {
+            do {
+                _ = try ProfileGenerator.generate(
+                    pumpSettings: pump,
+                    bgTargets: targets,
+                    basalProfile: basal,
+                    isf: isf,
+                    preferences: prefs,
+                    carbRatios: cr,
+                    tempTargets: [],
+                    clock: clock
+                )
+            } catch {
+                let at = clock == now ? "" : " (at \(startString(Int(clock.timeIntervalSince(day) / 60)).dropLast(3)))"
+                return error.localizedDescription + at
+            }
+        }
+        return nil
     }
 
     // MARK: - Building new values

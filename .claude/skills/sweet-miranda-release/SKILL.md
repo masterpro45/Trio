@@ -15,6 +15,12 @@ Read `CLAUDE.md` at the repo root first. It has the branches, build history and 
 4. Bump `APP_VERSION` in `Config.xcconfig`.
 5. Never rebase onto an upstream base older than the one that paired her current pod. OmnipodKit's `PodKeepAlive` enum was reordered between versions, so a downgrade misreads the stored pod setting (builds 4–6 did this and her loop stopped running in the background).
 
+6. **Settings or apply-path changes:** read "Trio settings are not Omnipod 5 settings" in `CLAUDE.md` first. In the
+   Simulator, replay a real therapy proposal (mock pump + simulator CGM, `updateGlucoseSource(.simulator)` so loops
+   actually run) and prove four things: a value the loop refuses is refused before any write, a valid one applies and
+   loops, a forced loop failure rolls back, and the app is alive afterwards. Run `xcrun simctl keychain <sim> reset`
+   first, so the test app cannot reach her Nightscout.
+
 ## 1b. Verify on Wilson's Mac mini (anything UI, or anything you can't reason about from the diff)
 
 The mini (`~/Developer/Trio`) has Xcode and an iOS Simulator; the cloud container doesn't.

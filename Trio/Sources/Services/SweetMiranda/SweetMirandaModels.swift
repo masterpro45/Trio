@@ -123,6 +123,8 @@ enum SMError: LocalizedError {
     case invalid(String)
     case pumpUnavailable(String)
     case nightscout(String)
+    /// Not now, nothing changed, the proposal stays pending (e.g. the last change is still being watched).
+    case notYet(String)
 
     var errorDescription: String? {
         switch self {
@@ -130,6 +132,7 @@ enum SMError: LocalizedError {
         case let .invalid(m): return m
         case let .pumpUnavailable(m): return m
         case let .nightscout(m): return m
+        case let .notYet(m): return m
         }
     }
 }
