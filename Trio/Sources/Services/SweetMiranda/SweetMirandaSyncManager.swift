@@ -58,6 +58,15 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @Persisted(key: "SweetMiranda.lastSnapshotHash") private var lastSnapshotHash: String = ""
     @Persisted(key: "SweetMiranda.lastSnapshotAt") private var lastSnapshotAt: Date = .distantPast
     @Persisted(key: "SweetMiranda.handledProposalIds") private var handledIds: [String] = []
+    /// Set right before a proposal is applied and cleared right after (success or error). If Trio starts
+    /// and finds it still set, the previous run ended while applying: a crash. That proposal is then
+    /// reported failed and never retried, so one bad proposal can never stop the loop twice (2026-09-28:
+    /// Trio crashed applying an approved proposal, then again on every relaunch).
+    @Persisted(key: "SweetMiranda.applyingProposalId") private var applyingId: String = ""
+    @Persisted(key: "SweetMiranda.applyingKeys") private var applyingKeys: String = ""
+    /// Loop date at the last applied proposal; the next remote approval waits for a newer loop cycle.
+    @Persisted(key: "SweetMiranda.lastApplyLoopDate") private var lastApplyLoopDate: Date = .distantPast
+
     /// Caregivers' phones whose Face ID may approve proposals. Changed only on this phone.
     @Persisted(key: "SweetMiranda.approvers") private(set) var approvers: [SMApprover] = []
 
@@ -74,6 +83,7 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
         guard !started else { return }
         started = true
         Self.current = self
+        recoverInterruptedApply()
         broadcaster.register(SettingsObserver.self, observer: self)
         broadcaster.register(PreferencesObserver.self, observer: self)
         broadcaster.register(BasalProfileObserver.self, observer: self)
@@ -107,6 +117,20 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             self?.checkNow()
         }
         debug(.remoteControl, "SweetMiranda: sync started")
+    }
+
+    /// Runs first thing at start: a marker left behind means the last run died mid-apply.
+    private func recoverInterruptedApply() {
+        let id = applyingId
+        guard !id.isEmpty else { return }
+        let keys = applyingKeys
+        // clear and remember BEFORE any network, so even if reporting fails it is never retried
+        applyingId = ""
+        applyingKeys = ""
+        markHandled(id)
+        UserDefaults.standard.synchronize()
+        debug(.remoteControl, "SweetMiranda: Trio stopped while applying \(id) (\(keys)), reported failed, not retried")
+        Task { await self.reportInterrupted(id: id, keys: keys) }
     }
 
     func applicationBecameActive() {
@@ -153,6 +177,10 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
                 for doc in await self.nightscoutManager.sweetMirandaFetchApprovals(proposalId: next.id) {
                     guard let approval = SMApproval(document: doc) else { continue }
                     if let who = SMApprovers.verify(approval, for: next, approvers: self.approvers) {
+                        if let why = await MainActor.run(body: { self.notReadyToApply() }) {
+                            debug(.remoteControl, "SweetMiranda: approved \(next.id) waits: \(why)")
+                            return
+                        }
                         await self.applyRemote(next, by: who)
                         return
                     }
@@ -271,10 +299,36 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     /// Re-validates against what the phone runs NOW (it may have changed since the proposal was
     /// written) and applies, pump first. Returns what was applied and the human lines.
     @MainActor private func applyValidated(_ p: SMProposal) async throws -> ([String: Any], [SMChangeLine]) {
+        // never write to the pump while a loop cycle is using it (waits at most 60 s)
+        var waited = 0
+        while apsManager.isLooping.value, waited < 60 {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            waited += 2
+        }
         let current = sources()
         let lines = try SweetMirandaSettingsCatalog.validate(changes: p.changes, against: current)
+        applyingKeys = p.changes.keys.sorted().joined(separator: ", ")
+        applyingId = p.id
+        UserDefaults.standard.synchronize()
+        defer {
+            applyingId = ""
+            applyingKeys = ""
+        }
         let applied = try await apply(p.changes, current: current)
+        lastApplyLoopDate = apsManager.lastLoopDate
         return (applied, lines)
+    }
+
+    /// Remote approvals apply only in a quiet moment, one per loop cycle. nil = ready, else the reason to wait.
+    @MainActor private func notReadyToApply() -> String? {
+        if apsManager.isLooping.value { return "a loop cycle is running" }
+        let last = apsManager.lastLoopDate
+        if Date().timeIntervalSince(last) > 6 * 60 { return "no completed loop cycle in the last 6 min" }
+        if last <= lastApplyLoopDate { return "waiting for a loop cycle after the last change" }
+        guard let pump = deviceManager.pumpManager else { return "no pump connected" }
+        if case .noBolus = pump.status.bolusState {} else { return "a bolus is running" }
+        if SweetMirandaDreamMode.shared.isOn { return "Dream Mode has the pod paused" }
+        return nil
     }
 
     /// Fresh snapshot, the result for the dashboard, a note in Nightscout.
@@ -342,7 +396,10 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     /// Applies in a fixed order: pump limits → basal (pump sync) → ISF/CR/targets → preferences →
     /// Trio settings. Anything the pump refuses throws before a file is touched, so a half-applied
     /// proposal cannot leave the phone in a state the pump disagrees with.
-    private func apply(_ changes: [String: Any], current: SweetMirandaSettingsCatalog.Sources) async throws -> [String: Any] {
+    @MainActor private func apply(
+        _ changes: [String: Any],
+        current: SweetMirandaSettingsCatalog.Sources
+    ) async throws -> [String: Any] {
         var applied: [String: Any] = [:]
 
         if let newPump = SweetMirandaSettingsCatalog.newPumpSettings(current.pump, changes: changes) {
@@ -414,13 +471,13 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
         return applied
     }
 
-    private func syncDeliveryLimits(_ settings: PumpSettings) async throws -> PumpSettings {
+    @MainActor private func syncDeliveryLimits(_ settings: PumpSettings) async throws -> PumpSettings {
         guard let pump = deviceManager.pumpManager else { return settings }
         let limits = DeliveryLimits(
             maximumBasalRate: HKQuantity(unit: .internationalUnitsPerHour, doubleValue: Double(settings.maxBasal)),
             maximumBolus: HKQuantity(unit: .internationalUnit(), doubleValue: Double(settings.maxBolus))
         )
-        return try await withCheckedThrowingContinuation { cont in
+        return try await Self.pumpAnswer("delivery limits") { (cont: SMOnceContinuation<PumpSettings>) in
             pump.syncDeliveryLimits(limits: limits) { result in
                 switch result {
                 case let .success(actual):
@@ -446,12 +503,12 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
         }
     }
 
-    private func syncBasal(_ profile: [BasalProfileEntry]) async throws {
+    @MainActor private func syncBasal(_ profile: [BasalProfileEntry]) async throws {
         guard let pump = deviceManager.pumpManager else {
             throw SMError.pumpUnavailable("No pump is connected, so the basal schedule cannot be changed")
         }
         let items = profile.map { RepeatingScheduleValue(startTime: TimeInterval($0.minutes * 60), value: Double($0.rate)) }
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        try await Self.pumpAnswer("basal schedule") { (cont: SMOnceContinuation<Void>) in
             pump.syncBasalRateSchedule(items: items) { result in
                 switch result {
                 case .success: cont.resume()
@@ -465,7 +522,35 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
         }
     }
 
+    /// Bridges a pump callback into async code. A second answer from the pump is logged and ignored
+    /// instead of crashing the app (a checked continuation resumed twice is a fatal error).
+    private static func pumpAnswer<T>(
+        _ what: String,
+        _ body: (SMOnceContinuation<T>) -> Void
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+            body(SMOnceContinuation(cont, what: what))
+        }
+    }
+
     // MARK: - Reporting
+
+    /// The result for a proposal whose apply was cut short by Trio stopping (found at the next start).
+    private func reportInterrupted(id: String, keys: String) async {
+        let doc: [String: Any] = [
+            "eventType": SweetMiranda.eventType,
+            "enteredBy": NightscoutTreatment.local,
+            "created_at": SMDates.string(Date()),
+            "smKind": SweetMiranda.Kind.result.rawValue,
+            "smId": id,
+            "smStatus": SweetMiranda.Status.failed.rawValue,
+            "smMessage": "Trio stopped while applying these settings (\(keys)). It was not tried again. " +
+                "Some of them may already be in place, so check Trio on her phone before sending them again.",
+            "notes": "Sweet Miranda settings failed"
+        ]
+        let ok = await nightscoutManager.sweetMirandaUpload(document: doc)
+        debug(.remoteControl, "SweetMiranda: interrupted-apply result for \(id) uploaded=\(ok)")
+    }
 
     private func report(
         _ p: SMProposal,
@@ -548,6 +633,48 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             podKeepAlive: SweetMirandaPodKeepAlive.name(deviceManager.pumpManager)
         )
     }
+}
+
+// MARK: - One-shot pump answers
+
+/// Wraps a checked continuation so it resumes exactly once, whatever the pump driver does.
+final class SMOnceContinuation<T> {
+    private var cont: CheckedContinuation<T, Error>?
+    private let lock = NSLock()
+    private let what: String
+
+    init(_ cont: CheckedContinuation<T, Error>, what: String) {
+        self.cont = cont
+        self.what = what
+    }
+
+    private func take() -> CheckedContinuation<T, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        let c = cont
+        cont = nil
+        return c
+    }
+
+    func resume(returning value: T) {
+        guard let c = take() else {
+            debug(.remoteControl, "SweetMiranda: \(what): the pump answered twice, ignored")
+            return
+        }
+        c.resume(returning: value)
+    }
+
+    func resume(throwing error: Error) {
+        guard let c = take() else {
+            debug(.remoteControl, "SweetMiranda: \(what): the pump answered twice, ignored")
+            return
+        }
+        c.resume(throwing: error)
+    }
+}
+
+extension SMOnceContinuation where T == Void {
+    func resume() { resume(returning: ()) }
 }
 
 // MARK: - Background time
