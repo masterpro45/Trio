@@ -310,107 +310,113 @@ extension Treatments {
                         )
 
                         Section {
-                            if state.fattyMeals || state.sweetMeals {
-                                HStack(spacing: 10) {
-                                    if state.fattyMeals {
-                                        Toggle(isOn: $state.useFattyMealCorrectionFactor) {
-                                            Text("Reduced Bolus")
-                                        }
-                                        .toggleStyle(RadioButtonToggleStyle())
-                                        .font(.footnote)
-                                        .onChange(of: state.useFattyMealCorrectionFactor) {
-                                            Task {
-                                                state.insulinCalculated = await state.calculateInsulin()
-                                                if state.useFattyMealCorrectionFactor {
-                                                    state.useSuperBolus = false
+                            if sweetMirandaSkin {
+                                // Her screen stays simple: no toggles, no raw amount field (the
+                                // confusing "0"), no external-insulin switch — just what Trio suggests.
+                                smSuggestionRow
+                            } else {
+                                if state.fattyMeals || state.sweetMeals {
+                                    HStack(spacing: 10) {
+                                        if state.fattyMeals {
+                                            Toggle(isOn: $state.useFattyMealCorrectionFactor) {
+                                                Text("Reduced Bolus")
+                                            }
+                                            .toggleStyle(RadioButtonToggleStyle())
+                                            .font(.footnote)
+                                            .onChange(of: state.useFattyMealCorrectionFactor) {
+                                                Task {
+                                                    state.insulinCalculated = await state.calculateInsulin()
+                                                    if state.useFattyMealCorrectionFactor {
+                                                        state.useSuperBolus = false
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    if state.sweetMeals {
-                                        Toggle(isOn: $state.useSuperBolus) {
-                                            Text("Super Bolus")
-                                        }
-                                        .toggleStyle(RadioButtonToggleStyle())
-                                        .font(.footnote)
-                                        .onChange(of: state.useSuperBolus) {
-                                            Task {
-                                                state.insulinCalculated = await state.calculateInsulin()
-                                                if state.useSuperBolus {
-                                                    state.useFattyMealCorrectionFactor = false
+                                        if state.sweetMeals {
+                                            Toggle(isOn: $state.useSuperBolus) {
+                                                Text("Super Bolus")
+                                            }
+                                            .toggleStyle(RadioButtonToggleStyle())
+                                            .font(.footnote)
+                                            .onChange(of: state.useSuperBolus) {
+                                                Task {
+                                                    state.insulinCalculated = await state.calculateInsulin()
+                                                    if state.useSuperBolus {
+                                                        state.useFattyMealCorrectionFactor = false
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            HStack {
                                 HStack {
-                                    Text("Recommendation")
-                                    Button(action: {
-                                        state.showInfo.toggle()
-                                    }, label: {
-                                        Image(systemName: "info.circle")
-                                    })
-                                        .foregroundStyle(.blue)
-                                        .buttonStyle(PlainButtonStyle())
-                                        .accessibilityLabel(Text("About the recommendation"))
-                                }
-                                Spacer()
-                                Button {
-                                    state.amount = state.insulinCalculated
-                                } label: {
                                     HStack {
-                                        Text(
-                                            formatter
-                                                .string(from: Double(state.insulinCalculated) as NSNumber) ?? ""
-                                        )
-
-                                        Text(
-                                            String(
-                                                localized:
-                                                " U",
-                                                comment: "Unit in number of units delivered (keep the space character!)"
-                                            )
-                                        ).foregroundColor(.secondary)
+                                        Text("Recommendation")
+                                        Button(action: {
+                                            state.showInfo.toggle()
+                                        }, label: {
+                                            Image(systemName: "info.circle")
+                                        })
+                                            .foregroundStyle(.blue)
+                                            .buttonStyle(PlainButtonStyle())
+                                            .accessibilityLabel(Text("About the recommendation"))
                                     }
-                                }
-                                .disabled(state.insulinCalculated == 0 || state.amount == state.insulinCalculated)
-                                .buttonStyle(.bordered).padding(.trailing, -10)
-                                .accessibilityLabel(Text(
-                                    "Use recommended bolus, "
-                                        + (formatter.string(from: Double(state.insulinCalculated) as NSNumber) ?? "")
-                                        + " " + String(localized: "units", comment: "Insulin units, spoken")
-                                ))
-                                .accessibilityHint(Text("Copies the recommended amount into the bolus field"))
-                            }
+                                    Spacer()
+                                    Button {
+                                        state.amount = state.insulinCalculated
+                                    } label: {
+                                        HStack {
+                                            Text(
+                                                formatter
+                                                    .string(from: Double(state.insulinCalculated) as NSNumber) ?? ""
+                                            )
 
-                            HStack {
-                                Text("Bolus")
-                                Spacer()
-                                TextFieldWithToolBar(
-                                    text: $state.amount,
-                                    placeholder: "0",
-                                    textColor: colorScheme == .dark ? .white : .blue,
-                                    maxLength: 5,
-                                    numberFormatter: formatter,
-                                    showArrows: true,
-                                    previousTextField: { focusedField = previousField(from: .bolus) },
-                                    nextTextField: { focusedField = nextField(from: .bolus) },
-                                    unitsText: String(localized: "U", comment: "Units for bolus amount")
-                                ).focused($focusedField, equals: .bolus)
-                                    .onChange(of: state.amount) {
-                                        Task {
-                                            await state.updateForecasts()
+                                            Text(
+                                                String(
+                                                    localized:
+                                                    " U",
+                                                    comment: "Unit in number of units delivered (keep the space character!)"
+                                                )
+                                            ).foregroundColor(.secondary)
                                         }
                                     }
-                            }
+                                    .disabled(state.insulinCalculated == 0 || state.amount == state.insulinCalculated)
+                                    .buttonStyle(.bordered).padding(.trailing, -10)
+                                    .accessibilityLabel(Text(
+                                        "Use recommended bolus, "
+                                            + (formatter.string(from: Double(state.insulinCalculated) as NSNumber) ?? "")
+                                            + " " + String(localized: "units", comment: "Insulin units, spoken")
+                                    ))
+                                    .accessibilityHint(Text("Copies the recommended amount into the bolus field"))
+                                }
 
-                            HStack {
-                                Text("External Insulin")
-                                Spacer()
-                                Toggle("", isOn: $state.externalInsulin).toggleStyle(CheckboxToggleStyle())
+                                HStack {
+                                    Text("Bolus")
+                                    Spacer()
+                                    TextFieldWithToolBar(
+                                        text: $state.amount,
+                                        placeholder: "0",
+                                        textColor: colorScheme == .dark ? .white : .blue,
+                                        maxLength: 5,
+                                        numberFormatter: formatter,
+                                        showArrows: true,
+                                        previousTextField: { focusedField = previousField(from: .bolus) },
+                                        nextTextField: { focusedField = nextField(from: .bolus) },
+                                        unitsText: String(localized: "U", comment: "Units for bolus amount")
+                                    ).focused($focusedField, equals: .bolus)
+                                        .onChange(of: state.amount) {
+                                            Task {
+                                                await state.updateForecasts()
+                                            }
+                                        }
+                                }
+
+                                HStack {
+                                    Text("External Insulin")
+                                    Spacer()
+                                    Toggle("", isOn: $state.externalInsulin).toggleStyle(CheckboxToggleStyle())
+                                }
                             }
                         }.listRowBackground(sweetMirandaSkin ? SweetMirandaPalette.mint.opacity(0.38) : Color.chart)
 
@@ -467,6 +473,11 @@ extension Treatments {
             .onAppear {
                 configureView {
                     state.isActive = true
+                    // Sweet Miranda: on her skin, always follow Trio's recommendation into the
+                    // (hidden) bolus amount, so the HOLD-TO-BOLUS button is live whether she came
+                    // through EAT or typed carbs straight in. Stops if a parent edits the amount
+                    // (only possible with the skin off).
+                    if sweetMirandaSkin { sweetMirandaPrefill = true }
                     // Sweet Miranda: carbs she picked on her Eat screen, handed over once.
                     if let meal = SweetMirandaMealHandoff.take() {
                         state.carbs = meal.carbs
@@ -565,10 +576,23 @@ extension Treatments {
                     bolusInProgressView
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                } else if smHoldBolus {
-                    smBolusHoldButton
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                } else if sweetMirandaSkin {
+                    // Just two buttons (Wilson 2026-09-29). Save carbs only shows when there
+                    // are carbs; the bolus is a 2-second hold — or a "too low" block under 60.
+                    if state.carbs > 0 {
+                        smSaveCarbsButton
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 2, trailing: 16))
+                    }
+                    if smBelow60 {
+                        smTooLowRow
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+                    } else if state.amount > 0, !limitExceeded, !state.externalInsulin, state.fat == 0, state.protein == 0 {
+                        smBolusHoldButton
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+                    }
                 } else {
                     Button {
                         if bolusWarning.shouldConfirm {
@@ -621,17 +645,57 @@ extension Treatments {
             )
         }
 
-        /// Sweet Miranda: on her skin a plain insulin bolus (not carbs-only, not
-        /// external insulin, no fat/protein, inside the limits) is given by holding
-        /// the button for two seconds instead of tapping and using Face ID.
-        private var smHoldBolus: Bool {
-            sweetMirandaSkin
-                && !limitExceeded
-                && !disableTaskButton
-                && !state.externalInsulin
-                && state.fat == 0
-                && state.protein == 0
-                && state.amount > 0
+        /// Sweet Miranda: never let her bolus when her glucose is under 60 (Wilson 2026-09-29).
+        /// currentBG of 0 means "no reading" — that's handled by Trio's stale-glucose path, not here.
+        private var smBelow60: Bool { state.currentBG > 0 && state.currentBG < 60 }
+
+        /// Read-only line on her screen showing what Trio suggests (no editable amount field).
+        @ViewBuilder private var smSuggestionRow: some View {
+            HStack(spacing: 8) {
+                Image(systemName: "drop.fill").foregroundStyle(SweetMirandaPalette.mint)
+                if state.amount > 0 {
+                    Text("Bolus \(state.amount.description) U")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                    Spacer()
+                    Text("Trio's suggestion").font(.caption).foregroundStyle(SweetMirandaPalette.muted)
+                } else {
+                    Text(state.carbs > 0 ? "No insulin needed for this" : "Enter carbs above")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SweetMirandaPalette.muted)
+                    Spacer()
+                }
+            }
+        }
+
+        /// Her first button: SAVE CARBS (a plain tap) — logs carbs with no insulin.
+        private var smSaveCarbsButton: some View {
+            Button { state.saveCarbsOnly() } label: {
+                Text("SAVE CARBS \(state.carbs.description) g")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SweetMirandaPalette.ink)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(height: 44)
+                    .background(SweetMirandaPalette.amber, in: RoundedRectangle(cornerRadius: 8))
+                    .shadow(radius: 3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Save \(state.carbs.description) grams of carbs, no insulin")
+        }
+
+        /// Shown instead of the bolus button when she's under 60 — bolus is blocked.
+        private var smTooLowRow: some View {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.raised.fill")
+                Text("Too low to bolus — glucose \(state.currentBG.description)")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(minHeight: 44)
+            .padding(.horizontal, 8)
+            .background(SweetMirandaPalette.red, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityLabel("Too low to bolus, glucose \(state.currentBG.description)")
         }
 
         /// The pink BOLUS bar she holds for two seconds. The fill tracks the hold; on
@@ -656,15 +720,20 @@ extension Treatments {
             .contentShape(RoundedRectangle(cornerRadius: 8))
             .shadow(radius: 3)
             .onLongPressGesture(minimumDuration: 2, maximumDistance: 40) {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                 bolusHolding = false
+                withAnimation(.easeOut(duration: 0.2)) { bolusHoldProgress = 0 }
+                // Safety: if she dropped under 60 during the hold, don't bolus.
+                guard !smBelow60 else {
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    return
+                }
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                 if bolusWarning.shouldConfirm {
                     smBolusSkipAuth = true
                     showConfirmDialogForBolusing = true
                 } else {
                     state.invokeTreatmentsTask(skipAuth: true)
                 }
-                withAnimation(.easeOut(duration: 0.2)) { bolusHoldProgress = 0 }
             } onPressingChanged: { pressing in
                 bolusHolding = pressing
                 withAnimation(pressing ? .linear(duration: 2) : .easeOut(duration: 0.2)) {
@@ -726,12 +795,27 @@ extension Treatments {
                     Spacer()
 
                     if state.bolusStatus == .inProgress {
-                        Button { state.cancelBolus() } label: {
-                            Image(systemName: "xmark.app")
-                                .font(.system(size: 25))
-                        }.tint(Color.tabBar)
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Cancel bolus")
+                        if sweetMirandaSkin {
+                            // Big, obvious STOP so she can cancel a bolus she started by mistake.
+                            Button { state.cancelBolus() } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "xmark.circle.fill")
+                                    Text("STOP").font(.system(size: 16, weight: .heavy, design: .rounded))
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14).frame(height: 40)
+                                .background(SweetMirandaPalette.red, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Stop this bolus")
+                        } else {
+                            Button { state.cancelBolus() } label: {
+                                Image(systemName: "xmark.app")
+                                    .font(.system(size: 25))
+                            }.tint(Color.tabBar)
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Cancel bolus")
+                        }
                     } else if state.bolusStatus == .initiating {
                         ProgressView()
                     }

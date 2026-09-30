@@ -532,6 +532,19 @@ extension Treatments {
             }
         }
 
+        /// Sweet Miranda: her "SAVE CARBS" button — logs the carbs with NO insulin, then closes.
+        /// Kept separate from `invokeTreatmentsTask` so it never boluses, even though her skin
+        /// keeps a bolus amount pre-filled from Trio's recommendation.
+        func saveCarbsOnly() {
+            Task {
+                await MainActor.run { self.addButtonPressed = true }
+                if carbs > 0 || fat > 0 || protein > 0 {
+                    await saveMeal()
+                }
+                hideModal()
+            }
+        }
+
         // MARK: - Insulin
 
         private func handleInsulin(isExternal: Bool, skipAuth: Bool = false) async {
