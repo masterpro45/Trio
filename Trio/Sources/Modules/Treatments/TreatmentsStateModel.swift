@@ -493,7 +493,7 @@ extension Treatments {
 
         // MARK: - Button tasks
 
-        func invokeTreatmentsTask() {
+        func invokeTreatmentsTask(skipAuth: Bool = false) {
             Task {
                 debug(.bolusState, "invokeTreatmentsTask fired")
                 await MainActor.run {
@@ -509,7 +509,7 @@ extension Treatments {
                 }
 
                 if isInsulinGiven {
-                    await handleInsulin(isExternal: externalInsulin)
+                    await handleInsulin(isExternal: externalInsulin, skipAuth: skipAuth)
                 } else {
                     hideModal()
                     return
@@ -534,11 +534,11 @@ extension Treatments {
 
         // MARK: - Insulin
 
-        private func handleInsulin(isExternal: Bool) async {
+        private func handleInsulin(isExternal: Bool, skipAuth: Bool = false) async {
             debug(.bolusState, "handleInsulin fired")
 
             if !isExternal {
-                await addPumpInsulin()
+                await addPumpInsulin(skipAuth: skipAuth)
             } else {
                 await addExternalInsulin()
             }
@@ -629,7 +629,7 @@ extension Treatments {
             }
         }
 
-        func addPumpInsulin() async {
+        func addPumpInsulin(skipAuth: Bool = false) async {
             guard amount > 0 else {
                 showModal(for: nil)
                 return
@@ -638,7 +638,17 @@ extension Treatments {
             let maxAmount = Double(min(amount, maxBolus))
 
             do {
-                let authenticated = try await unlockmanager.unlock()
+                // Sweet Miranda: on her skin the BOLUS button is a deliberate 2-second
+                // press-and-hold, and that hold IS the confirmation, so we don't ask
+                // Face ID on top of it (Miranda's request, 2026-09-29). This path is
+                // reached only from her hold gesture; every other caller — external
+                // insulin, and the whole app with the skin off — still authenticates.
+                let authenticated: Bool
+                if skipAuth {
+                    authenticated = true
+                } else {
+                    authenticated = try await unlockmanager.unlock()
+                }
                 if authenticated {
                     // show loading animation
                     await MainActor.run {

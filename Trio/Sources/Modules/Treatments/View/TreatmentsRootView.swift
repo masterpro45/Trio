@@ -525,6 +525,10 @@ extension Treatments {
         }
 
         @State private var showConfirmDialogForBolusing = false
+        // Sweet Miranda: her BOLUS button is a 2-second hold instead of Face ID.
+        @State private var bolusHolding = false
+        @State private var bolusHoldProgress: CGFloat = 0
+        @State private var smBolusSkipAuth = false
 
         private var bolusWarning: (shouldConfirm: Bool, warningMessage: String, color: Color) {
             let isGlucoseVeryLow = state.currentBG < 54
@@ -561,9 +565,14 @@ extension Treatments {
                     bolusInProgressView
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                } else if smHoldBolus {
+                    smBolusHoldButton
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 } else {
                     Button {
                         if bolusWarning.shouldConfirm {
+                            smBolusSkipAuth = false
                             showConfirmDialogForBolusing = true
                         } else {
                             state.invokeTreatmentsTask()
@@ -583,20 +592,6 @@ extension Treatments {
                     .listRowBackground(treatmentButtonBackground)
                     .shadow(radius: 3)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .glassActionSheet(
-                        Text(bolusWarning.warningMessage + " Bolus \(state.amount.description) U?"),
-                        isPresented: $showConfirmDialogForBolusing,
-                        actions: [
-                            GlassSheetAction(
-                                verbatim: bolusWarning.warningMessage
-                                    .isEmpty ? String(localized: "Enact Bolus") :
-                                    String(localized: "Ignore Warning and Enact Bolus"),
-                                role: bolusWarning.warningMessage.isEmpty ? nil : .destructive
-                            ) {
-                                state.invokeTreatmentsTask()
-                            }
-                        ]
-                    )
                 }
             } header: {
                 if !bolusWarning.warningMessage.isEmpty {
@@ -608,6 +603,75 @@ extension Treatments {
                         .padding(.top, -22)
                 }
             }
+            .glassActionSheet(
+                Text(bolusWarning.warningMessage + " Bolus \(state.amount.description) U?"),
+                isPresented: $showConfirmDialogForBolusing,
+                actions: [
+                    GlassSheetAction(
+                        verbatim: bolusWarning.warningMessage
+                            .isEmpty ? String(localized: "Enact Bolus") :
+                            String(localized: "Ignore Warning and Enact Bolus"),
+                        role: bolusWarning.warningMessage.isEmpty ? nil : .destructive
+                    ) {
+                        // Sweet Miranda: when the confirm sheet was reached from her
+                        // 2-second hold, the hold already stood in for Face ID.
+                        state.invokeTreatmentsTask(skipAuth: smBolusSkipAuth)
+                    }
+                ]
+            )
+        }
+
+        /// Sweet Miranda: on her skin a plain insulin bolus (not carbs-only, not
+        /// external insulin, no fat/protein, inside the limits) is given by holding
+        /// the button for two seconds instead of tapping and using Face ID.
+        private var smHoldBolus: Bool {
+            sweetMirandaSkin
+                && !limitExceeded
+                && !disableTaskButton
+                && !state.externalInsulin
+                && state.fat == 0
+                && state.protein == 0
+                && state.amount > 0
+        }
+
+        /// The pink BOLUS bar she holds for two seconds. The fill tracks the hold; on
+        /// completion it enacts the bolus with no Face ID (the hold is the
+        /// confirmation), except that a very-low glucose still raises the extra
+        /// "are you sure?" sheet afterward.
+        private var smBolusHoldButton: some View {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(SweetMirandaPalette.pink)
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.38))
+                        .frame(width: geo.size.width * bolusHoldProgress)
+                }
+                Text(bolusHolding ? "Keep holding…" : "HOLD 2 SEC · BOLUS \(state.amount.description) U")
+                    .font(.system(size: 19, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SweetMirandaPalette.ink)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(height: 44)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(radius: 3)
+            .onLongPressGesture(minimumDuration: 2, maximumDistance: 40) {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                bolusHolding = false
+                if bolusWarning.shouldConfirm {
+                    smBolusSkipAuth = true
+                    showConfirmDialogForBolusing = true
+                } else {
+                    state.invokeTreatmentsTask(skipAuth: true)
+                }
+                withAnimation(.easeOut(duration: 0.2)) { bolusHoldProgress = 0 }
+            } onPressingChanged: { pressing in
+                bolusHolding = pressing
+                withAnimation(pressing ? .linear(duration: 2) : .easeOut(duration: 0.2)) {
+                    bolusHoldProgress = pressing ? 1 : 0
+                }
+            }
+            .accessibilityLabel("Hold two seconds to give \(state.amount.description) units of insulin")
         }
 
         /// Card-style in-progress visualizer matching Home's `bolusView` look:

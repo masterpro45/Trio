@@ -209,6 +209,38 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
             "TrioAlertManager.issueAlert \(alert.identifier.value) level=\(alert.interruptionLevel)"
         )
 
+        // Sweet Miranda: her phone stays quiet in public. At soccer a signal-loss
+        // alarm went off in front of everyone and embarrassed her, so with her skin
+        // on we suppress the everyday nags on HER phone — low, high, forecast-low,
+        // carbs-required, the "not looping" alert, and CGM signal-loss / sensor
+        // nuisances — and let her parents catch them through the Odysseus watchdog
+        // (SMS in business hours, WhatsApp after) instead. A genuine URGENT LOW is
+        // never touched, and anything a producer marked .critical (pump failure, an
+        // urgent low set to override silence) still sounds. Unknown alerts still
+        // sound too — we only mute the ones we can name. Turning her skin off in
+        // Settings restores every stock alert instantly.
+        if SweetMirandaSkin.shared.isEnabled, alert.interruptionLevel != .critical {
+            let id = alert.identifier.value.lowercased()
+            let isUrgentLow = id.contains("urgentlow")
+            let mutedNeedles = [
+                "glucose.low.", // low glucose (not urgent — see isUrgentLow guard)
+                "glucose.forecastedlow.", // predicted-low early warning
+                "glucose.high.", // high glucose
+                "glucose.carbsrequired.", // "eat carbs" nudge
+                "loop.notactive", // "Trio is not looping"
+                "signalloss", // CGM signal loss (Trio plugin path)
+                "signal loss",
+                "missedreading",
+                "sensornotfound",
+                "outofrange",
+                "out of range"
+            ]
+            if !isUrgentLow, mutedNeedles.contains(where: { id.contains($0) }) {
+                debug(.service, "SweetMiranda: keeping her phone quiet — suppressed \(alert.identifier.value)")
+                return
+            }
+        }
+
         let now = Date()
 
         // Catalog-known alerts (pump, CGM lifecycle, Trio algorithm) get the
