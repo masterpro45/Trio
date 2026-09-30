@@ -532,19 +532,6 @@ extension Treatments {
             }
         }
 
-        /// Sweet Miranda: her "SAVE CARBS" button — logs the carbs with NO insulin, then closes.
-        /// Kept separate from `invokeTreatmentsTask` so it never boluses, even though her skin
-        /// keeps a bolus amount pre-filled from Trio's recommendation.
-        func saveCarbsOnly() {
-            Task {
-                await MainActor.run { self.addButtonPressed = true }
-                if carbs > 0 || fat > 0 || protein > 0 {
-                    await saveMeal()
-                }
-                hideModal()
-            }
-        }
-
         // MARK: - Insulin
 
         private func handleInsulin(isExternal: Bool, skipAuth: Bool = false) async {
@@ -651,11 +638,9 @@ extension Treatments {
             let maxAmount = Double(min(amount, maxBolus))
 
             do {
-                // Sweet Miranda: on her skin the BOLUS button is a deliberate 2-second
-                // press-and-hold, and that hold IS the confirmation, so we don't ask
-                // Face ID on top of it (Miranda's request, 2026-09-29). This path is
-                // reached only from her hold gesture; every other caller — external
-                // insulin, and the whole app with the skin off — still authenticates.
+                // Sweet Miranda: her BOLUS button is a 2-second press-and-hold, and that hold IS
+                // the confirmation, so we don't ask Face ID on top of it. Only reached from her
+                // hold gesture; every other caller still authenticates.
                 let authenticated: Bool
                 if skipAuth {
                     authenticated = true
