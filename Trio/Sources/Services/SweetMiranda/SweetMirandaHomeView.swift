@@ -1638,6 +1638,15 @@ final class SweetMirandaDreamMode: ObservableObject {
     private var startedAt: Date?
     private var resuming = false
 
+    /// Posts a Nightscout note. Set by `SweetMirandaSyncManager.start()`, which owns the uploader.
+    /// A pod pause reaches Nightscout only as a bare `PumpSuspend`, which a pod change looks exactly
+    /// like — these notes are what let the WilHQ trace say "Dream Mode" and mean it.
+    var postNote: ((String) -> Void)?
+
+    private func note(_ text: String) {
+        postNote?("Sweet Miranda: \(text)")
+    }
+
     private enum Key {
         static let resumeAt = "sweetMiranda.dream.resumeAt"
         static let startedAt = "sweetMiranda.dream.startedAt"
@@ -1658,12 +1667,14 @@ final class SweetMirandaDreamMode: ObservableObject {
         let now = Date()
         remember(started: now, resume: now.addingTimeInterval(TimeInterval(m * 60)))
         debug(.apsManager, "SweetMiranda: Dream Mode on — pod paused for \(m) min")
+        note("Dream Mode on \(m)")
     }
 
     @MainActor func stop(apsManager: APSManager) async throws {
         try await Self.pump(apsManager) { $0.resumeDelivery(completion: $1) }
         remember(started: nil, resume: nil)
         debug(.apsManager, "SweetMiranda: Dream Mode off — insulin resumed by her")
+        note("Dream Mode off stopped")
     }
 
     /// Resume the pod once the time is up. Safe to call as often as you like.
@@ -1673,6 +1684,7 @@ final class SweetMirandaDreamMode: ObservableObject {
         // just-started pause from being cleared before the pump reports "suspended".
         if !apsManager.isSuspended, let startedAt, Date().timeIntervalSince(startedAt) > 180 {
             remember(started: nil, resume: nil)
+            note("Dream Mode off elsewhere")
             return
         }
         guard Date() >= resumeAt else { return }
@@ -1682,6 +1694,7 @@ final class SweetMirandaDreamMode: ObservableObject {
             try await Self.pump(apsManager) { $0.resumeDelivery(completion: $1) }
             remember(started: nil, resume: nil)
             debug(.apsManager, "SweetMiranda: Dream Mode time up — insulin resumed")
+            note("Dream Mode off time up")
         } catch {
             // Keep the end time: the next glucose reading tries again.
             debug(.apsManager, "SweetMiranda: Dream Mode resume failed, will retry: \(error)")

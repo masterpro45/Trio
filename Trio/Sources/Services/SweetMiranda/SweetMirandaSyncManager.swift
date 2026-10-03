@@ -122,6 +122,13 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             .sink { [weak self] error in if let error { self?.watchLoopFailed(error) } }
             .store(in: &subscriptions)
 
+        // Dream Mode's own notes: a pod pause reaches Nightscout as a bare PumpSuspend, which a pod
+        // change is indistinguishable from, so the WilHQ trace could never name it. This can.
+        SweetMirandaDreamMode.shared.postNote = { [weak self] note in
+            guard let self else { return }
+            Task { await self.nightscoutManager.uploadNoteTreatment(note: note) }
+        }
+
         // Dream Mode resumes insulin on time. A paused pod stops loop cycles, so this rides on every
         // new G6 reading instead — it keeps arriving every 5 min with the phone locked.
         glucoseStorage.updatePublisher
