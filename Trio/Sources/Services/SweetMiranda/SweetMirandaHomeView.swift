@@ -665,8 +665,51 @@ extension SweetMiranda {
 
         // MARK: - Graph
 
+        /// One dose on the trace: a bolus she (or the loop) gave, or carbs she typed in.
+        /// Display only — it reports what the pump already did and never computes a dose.
+        private struct TraceDose: Identifiable {
+            enum Kind { case bolus, microBolus, carbs }
+            let id: String
+            let kind: Kind
+            let at: Date
+            let value: Double
+        }
+
+        /// Her boluses and micro-boluses in the same three hours the line covers, drawn the way
+        /// WilHQ draws them: pink bars for the insulin she gives, thinner lilac bars for Trio's
+        /// own micro-boluses, each labelled in units.
+        private func traceBoluses(since cutoff: Date) -> [TraceDose] {
+            state.insulinFromPersistence.compactMap { event in
+                guard let bolus = event.bolus,
+                      let at = event.timestamp, at >= cutoff
+                else { return nil }
+                let units = Double(truncating: bolus.amount ?? 0)
+                guard units > 0 else { return nil }
+                return TraceDose(
+                    id: event.id ?? "\(at.timeIntervalSince1970)-bolus",
+                    kind: bolus.isSMB ? .microBolus : .bolus,
+                    at: at,
+                    value: units
+                )
+            }
+        }
+
+        /// Carbs typed into the calculator, as gold bubbles riding above the line — the same
+        /// shape WilHQ uses, so her phone and the dashboard tell one story.
+        private func traceCarbs(since cutoff: Date) -> [TraceDose] {
+            state.carbsFromPersistence.compactMap { entry in
+                guard let at = entry.date, at >= cutoff, entry.carbs > 0 else { return nil }
+                return TraceDose(
+                    id: entry.id?.uuidString ?? "\(at.timeIntervalSince1970)-carb",
+                    kind: .carbs,
+                    at: at,
+                    value: Double(entry.carbs)
+                )
+            }
+        }
+
         /// Her last three hours, drawn with a shadowed line under the real one so it reads with
-        /// depth rather than as a flat sparkline.
+        /// depth rather than as a flat sparkline, plus a dose lane along the bottom.
         private var graphCard: some View {
             let cutoff = Date().addingTimeInterval(-3 * 3600)
             let points = state.glucoseFromPersistence
@@ -674,6 +717,9 @@ extension SweetMiranda {
                     guard let d = g.date, d >= cutoff, g.glucose > 0 else { return nil }
                     return (d, Int(g.glucose))
                 }
+            let boluses = traceBoluses(since: cutoff)
+            let carbs = traceCarbs(since: cutoff)
+            let lane = doseLane(points.map(\.1), boluses: boluses)
 
             return VStack(spacing: 0) {
                 if points.count >= 2 {
@@ -683,6 +729,11 @@ extension SweetMiranda {
                             yEnd: .value("high", Int(truncating: state.highGlucose as NSNumber))
                         )
                         .foregroundStyle(SweetMirandaPalette.mint.opacity(0.11))
+
+                        // the dose lane's own floor, so the bars read as sitting on a shelf
+                        RuleMark(y: .value("lane", lane.top))
+                            .lineStyle(StrokeStyle(lineWidth: 1))
+                            .foregroundStyle(SweetMirandaPalette.muted.opacity(0.22))
 
                         // depth pass: the same curve, offset and dark
                         ForEach(points, id: \.0) { point in
@@ -713,13 +764,55 @@ extension SweetMiranda {
                             )
                         }
 
+                        // every bolus: a bar up from the lane floor, tallest = the biggest dose
+                        ForEach(boluses) { dose in
+                            let micro = dose.kind == .microBolus
+                            BarMark(
+                                x: .value("time", dose.at, unit: .second),
+                                yStart: .value("from", lane.floor),
+                                yEnd: .value("to", lane.height(for: dose.value)),
+                                width: .fixed(micro ? 4 : 7)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                            .foregroundStyle(micro ? SweetMirandaPalette.lilac : SweetMirandaPalette.pink)
+                            .annotation(position: .top, spacing: 1) {
+                                if dose.value >= (micro ? 0.3 : 0.25) {
+                                    Text(
+                                        dose.value < 1 ? String(format: "%.2f", dose.value)
+                                            : String(format: "%.1f", dose.value)
+                                    )
+                                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(
+                                        micro ? SweetMirandaPalette.lilac : SweetMirandaPalette.pink
+                                    )
+                                }
+                            }
+                        }
+
+                        // carbs she typed in, gold, sized by grams, above the line
+                        ForEach(carbs) { dose in
+                            PointMark(
+                                x: .value("time", dose.at, unit: .second),
+                                y: .value("carbs", carbY(dose, points: points, lane: lane))
+                            )
+                            .symbolSize(min(430, 300 + dose.value * 2.2))
+                            .foregroundStyle(SweetMirandaPalette.amber)
+                            .annotation(position: .overlay) {
+                                Text("\(Int(dose.value.rounded()))")
+                                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(SweetMirandaPalette.ink)
+                                    .fixedSize()
+                            }
+                        }
+
                         if let last = points.last {
                             PointMark(x: .value("time", last.0), y: .value("glucose", last.1))
                                 .symbolSize(150)
                                 .foregroundStyle(SweetMirandaPalette.pink)
                         }
                     }
-                    .chartYScale(domain: yDomain(points.map(\.1)))
+                    .chartXScale(domain: cutoff ... Date().addingTimeInterval(5 * 60))
+                    .chartYScale(domain: lane.floor ... lane.ceiling)
                     .chartXAxis(.hidden)
                     .chartYAxis {
                         AxisMarks(values: [
@@ -731,9 +824,12 @@ extension SweetMiranda {
                                 .foregroundStyle(SweetMirandaPalette.muted)
                         }
                     }
-                    .frame(height: 150)
+                    .frame(height: 176)
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 6)
+
+                    doseKey(boluses: boluses, carbs: carbs)
                 } else {
                     Text("Waiting for readings…")
                         .font(.system(size: 13, weight: .medium))
@@ -746,10 +842,75 @@ extension SweetMiranda {
             .padding(.top, 12)
         }
 
-        private func yDomain(_ values: [Int]) -> ClosedRange<Int> {
+        /// What each mark on the trace means, in her words. Only names what is actually there.
+        private func doseKey(boluses: [TraceDose], carbs: [TraceDose]) -> some View {
+            let hasBolus = boluses.contains { $0.kind == .bolus }
+            let hasMicro = boluses.contains { $0.kind == .microBolus }
+
+            return HStack(spacing: 12) {
+                if hasBolus { keyChip("Insulin", SweetMirandaPalette.pink) }
+                if hasMicro { keyChip("Trio's drops", SweetMirandaPalette.lilac) }
+                if !carbs.isEmpty { keyChip("Carbs", SweetMirandaPalette.amber) }
+                if !hasBolus, !hasMicro, carbs.isEmpty {
+                    Text("No insulin or carbs in the last 3 hours")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(SweetMirandaPalette.muted)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+
+        private func keyChip(_ label: String, _ tint: Color) -> some View {
+            HStack(spacing: 5) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(tint)
+                    .frame(width: 7, height: 11)
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(SweetMirandaPalette.muted)
+            }
+        }
+
+        /// The bottom quarter of the chart is the dose lane, so the bars never cross her line.
+        /// Heights are relative to the biggest bolus in view — same as WilHQ's trace.
+        private struct DoseLane {
+            let floor: Int
+            let top: Int
+            let ceiling: Int
+            let biggest: Double
+
+            /// Square-root scale on purpose: a 0.35 U micro-bolus beside a 5.4 U meal dose is a
+            /// 2-pixel speck on a straight scale. The tallest bar is still the biggest dose.
+            func height(for units: Double) -> Int {
+                let span = Double(top - floor)
+                let frac = biggest > 0 ? min(1, (units / biggest).squareRoot()) : 0
+                return floor + max(Int((span * 0.16).rounded()), Int((span * 0.84 * frac).rounded()))
+            }
+        }
+
+        private func doseLane(_ values: [Int], boluses: [TraceDose]) -> DoseLane {
             let low = min(values.min() ?? 70, 70) - 15
             let high = max(values.max() ?? 180, 180) + 20
-            return max(0, low) ... high
+            let span = max(60, high - max(0, low))
+            let laneSpan = Int((Double(span) * 0.3).rounded())
+            let laneFloor = max(0, low) - laneSpan
+            return DoseLane(
+                floor: laneFloor,
+                top: max(0, low),
+                ceiling: high + Int((Double(span) * 0.12).rounded()), // room for the carb bubbles
+
+                biggest: max(2, boluses.map(\.value).max() ?? 0)
+            )
+        }
+
+        /// Carb bubbles ride above the reading nearest in time, clamped inside the chart.
+        private func carbY(_ dose: TraceDose, points: [(Date, Int)], lane: DoseLane) -> Int {
+            guard let nearest = points.min(by: {
+                abs($0.0.timeIntervalSince(dose.at)) < abs($1.0.timeIntervalSince(dose.at))
+            }) else { return lane.ceiling - 20 }
+            return min(lane.ceiling - 14, nearest.1 + 26)
         }
 
         // MARK: - Stats
