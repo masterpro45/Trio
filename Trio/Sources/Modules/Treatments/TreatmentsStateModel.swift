@@ -638,8 +638,8 @@ extension Treatments {
             let maxAmount = Double(min(amount, maxBolus))
 
             do {
-                // Sweet Miranda: her BOLUS button is a 2-second press-and-hold, and that hold IS
-                // the confirmation, so we don't ask Face ID on top of it. Only reached from her
+                // Sweet Miranda: her BOLUS button is a press-and-hold, and that hold IS the
+                // confirmation, so we don't ask Face ID on top of it. Only reached from her
                 // hold gesture; every other caller still authenticates.
                 let authenticated: Bool
                 if skipAuth {

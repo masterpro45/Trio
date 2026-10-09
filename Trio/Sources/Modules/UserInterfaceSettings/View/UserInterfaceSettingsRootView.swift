@@ -39,6 +39,10 @@ extension UserInterfaceSettings {
             return formatter
         }
 
+        /// Luna's two switches, both on unless Miranda turns them off.
+        @AppStorage(SweetMirandaLuna.Key.enabled) private var lunaCheers = true
+        @AppStorage(SweetMirandaReminders.enabledKey) private var lunaReminders = true
+
         /// Mirrors SweetMirandaSkin.shared so the row reads and writes the same stored flag.
         private var sweetMirandaSkinEnabled: Binding<Bool> {
             Binding(
@@ -55,6 +59,30 @@ extension UserInterfaceSettings {
                             Text("Miranda's home screen")
                             Text(
                                 "Big pink EAT + DOSE button, alerts and history beside it, and status circles that fade as the pod and sensor run out. Turn it off for the standard Trio screen."
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(minHeight: 44)
+
+                    Toggle(isOn: $lunaCheers) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Luna's high fives")
+                            Text(
+                                "Luna sits in a corner of Miranda's home screen and cheers her on. Drag her anywhere; tap her for a high five. She never gives advice about insulin or food."
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(minHeight: 44)
+
+                    Toggle(isOn: $lunaReminders) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Luna's 9 pm reminder")
+                            Text(
+                                "Luna barks on Miranda's phone at 9 pm on the evening her pod or sensor runs out, so the change happens before bed."
                             )
                             .font(.footnote)
                             .foregroundStyle(.secondary)

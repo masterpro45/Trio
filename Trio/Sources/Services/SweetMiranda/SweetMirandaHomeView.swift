@@ -64,10 +64,18 @@ extension SweetMiranda {
                     bottomBar
                 }
             }
+            .overlay {
+                if SweetMirandaLuna.shared.isEnabled {
+                    SweetMirandaLunaLayer(facts: lunaFacts)
+                }
+            }
             .onAppear {
                 configureView()
                 refreshDeviceFacts()
+                scheduleChangeReminders()
             }
+            .onChange(of: state.pumpExpiresAtDate) { _, _ in scheduleChangeReminders() }
+            .onChange(of: state.cgmSensorExpiresAt) { _, _ in scheduleChangeReminders() }
             .preferredColorScheme(.dark)
             .sheet(isPresented: $showEat, onDismiss: openTreatmentsIfChosen) {
                 SweetMiranda.EatView(
@@ -509,6 +517,42 @@ extension SweetMiranda {
             guard let expires = state.pumpExpiresAtDate else { return nil }
             let remaining = expires.timeIntervalSince(Date())
             return remaining > 0 ? remaining / 3600 : 0
+        }
+
+        // MARK: - Luna
+
+        /// Omnipod pods run 72 h and her G6 sensors 10 days, so the expiry dates the screen already
+        /// shows give the change times back. Only used for "did this happen in the last 90 minutes",
+        /// so a constant offset is exactly right.
+        private static let podLife: TimeInterval = 72 * 3600
+        private static let sensorLife: TimeInterval = 10 * 86400
+
+        /// Everything Luna is allowed to notice. Read-only, and nothing from the dosing path.
+        private var lunaFacts: SweetMirandaLunaFacts {
+            var facts = SweetMirandaLunaFacts()
+            facts.readings = state.glucoseFromPersistence.compactMap { g in
+                guard let d = g.date, g.glucose > 0 else { return nil }
+                return (date: d, value: Int(g.glucose))
+            }
+            facts.low = Int(truncating: state.lowGlucose as NSNumber)
+            facts.high = Int(truncating: state.highGlucose as NSNumber)
+            // Her own boluses, not the loop's micro-boluses: "you took care of that yourself".
+            facts.lastBolus = state.insulinFromPersistence
+                .filter { ($0.bolus?.isSMB == false) && (($0.bolus?.amount.map { Double(truncating: $0) } ?? 0) > 0) }
+                .compactMap(\.timestamp)
+                .max()
+            facts.lastCarbs = state.carbsFromPersistence.filter { $0.carbs > 0 }.compactMap(\.date).max()
+            facts.podChanged = state.pumpExpiresAtDate?.addingTimeInterval(-Self.podLife)
+            facts.sensorChanged = state.cgmSensorExpiresAt?.addingTimeInterval(-Self.sensorLife)
+            return facts
+        }
+
+        /// Luna's 9 pm bark on the evening a pod or sensor runs out (`SweetMirandaReminders`).
+        private func scheduleChangeReminders() {
+            SweetMirandaReminders.refresh(
+                podExpires: state.pumpExpiresAtDate,
+                sensorExpires: state.cgmSensorExpiresAt
+            )
         }
 
         // MARK: - Nudge

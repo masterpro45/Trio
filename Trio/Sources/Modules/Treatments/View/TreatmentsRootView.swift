@@ -525,7 +525,7 @@ extension Treatments {
         }
 
         @State private var showConfirmDialogForBolusing = false
-        // Sweet Miranda: 2-second hold to bolus instead of Face ID.
+        // Sweet Miranda: press-and-hold to bolus instead of Face ID (smBolusHoldSeconds).
         @State private var bolusHolding = false
         @State private var bolusHoldProgress: CGFloat = 0
         @State private var smBolusSkipAuth = false
@@ -566,8 +566,8 @@ extension Treatments {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 } else if smHoldBolus {
-                    // Sweet Miranda: the ONLY change from stock — her BOLUS button is a 2-second
-                    // hold instead of a tap + Face ID. Under 60, it becomes a "too low" block.
+                    // Sweet Miranda: the ONLY change from stock — her BOLUS button is a
+                    // press-and-hold instead of a tap + Face ID. Under 60, it becomes a "too low" block.
                     if smBelow60 {
                         smTooLowRow
                             .listRowBackground(Color.clear)
@@ -628,7 +628,7 @@ extension Treatments {
         }
 
         /// Sweet Miranda: her button is a bolus (not carbs-only, not external, in limits) — the
-        /// one case where it becomes a 2-second hold.
+        /// one case where it becomes a press-and-hold.
         private var smHoldBolus: Bool {
             sweetMirandaSkin
                 && !limitExceeded
@@ -642,7 +642,12 @@ extension Treatments {
         /// Never bolus under 60 (Wilson 2026-09-29). currentBG 0 = no reading (handled elsewhere).
         private var smBelow60: Bool { state.currentBG > 0 && state.currentBG < 60 }
 
-        /// The pink BOLUS bar she holds for two seconds. The hold is the confirmation, so no Face ID.
+        /// How long she holds the BOLUS bar. It is the only confirmation on that path (no Face ID),
+        /// so it stays long enough to be deliberate and short enough not to feel like a punishment —
+        /// 2 s felt like forever to her (Wilson 2026-10-08). Never take this below 1 s.
+        private static let smBolusHoldSeconds: Double = 1.0
+
+        /// The pink BOLUS bar she holds. The hold is the confirmation, so no Face ID.
         private var smBolusHoldButton: some View {
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 8)
@@ -652,7 +657,7 @@ extension Treatments {
                         .fill(Color.white.opacity(0.38))
                         .frame(width: geo.size.width * bolusHoldProgress)
                 }
-                Text(bolusHolding ? "Keep holding…" : "HOLD 2 SEC · BOLUS \(state.amount.description) U")
+                Text(bolusHolding ? "Keep holding…" : "HOLD 1 SEC · BOLUS \(state.amount.description) U")
                     .font(.system(size: 19, weight: .heavy, design: .rounded))
                     .foregroundStyle(SweetMirandaPalette.ink)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -660,7 +665,7 @@ extension Treatments {
             .frame(height: 44)
             .contentShape(RoundedRectangle(cornerRadius: 8))
             .shadow(radius: 3)
-            .onLongPressGesture(minimumDuration: 2, maximumDistance: 40) {
+            .onLongPressGesture(minimumDuration: Self.smBolusHoldSeconds, maximumDistance: 40) {
                 bolusHolding = false
                 withAnimation(.easeOut(duration: 0.2)) { bolusHoldProgress = 0 }
                 guard !smBelow60 else {
@@ -676,11 +681,11 @@ extension Treatments {
                 }
             } onPressingChanged: { pressing in
                 bolusHolding = pressing
-                withAnimation(pressing ? .linear(duration: 2) : .easeOut(duration: 0.2)) {
+                withAnimation(pressing ? .linear(duration: Self.smBolusHoldSeconds) : .easeOut(duration: 0.2)) {
                     bolusHoldProgress = pressing ? 1 : 0
                 }
             }
-            .accessibilityLabel("Hold two seconds to give \(state.amount.description) units of insulin")
+            .accessibilityLabel("Hold one second to give \(state.amount.description) units of insulin")
         }
 
         /// Shown in place of the bolus button when she's under 60.

@@ -13,6 +13,9 @@
 		5A5E1522F53682675CA39C6B /* SweetMirandaProposalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */; };
 		5A5E0A0886104404995F445A /* SweetMirandaHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */; };
 		5A5E2F355876760810EDBBA0 /* SweetMirandaSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */; };
+		5A5E2F3558767608100REMD0 /* SweetMirandaReminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */; };
+		5A5E2F355876760810CHEER0 /* SweetMirandaCheers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */; };
+		5A5E2F3558767608100LUNA0 /* SweetMirandaLuna.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */; };
 		5A5E95FA342E4E55421FA815 /* SweetMirandaSensorSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */; };
 		5A5E2EE079ECCD7AD82C4AC2 /* SweetMirandaSensorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E4DC30CF513E76DFC4E3B /* SweetMirandaSensorSession.swift */; };
 		041D1E995A6AE92E9289DC49 /* TreatmentsDataFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D1A7CA8C10C4403D4BBFA7 /* TreatmentsDataFlow.swift */; };
@@ -474,6 +477,7 @@
 		CAF20000000000000000000F /* Trio/Resources/Sounds/synth.caf in Resources */ = {isa = PBXBuildFile; fileRef = CAF10000000000000000000F /* Trio/Resources/Sounds/synth.caf */; };
 		CAF200000000000000000010 /* Trio/Resources/Sounds/trill.caf in Resources */ = {isa = PBXBuildFile; fileRef = CAF100000000000000000010 /* Trio/Resources/Sounds/trill.caf */; };
 		CAF200000000000000000011 /* Trio/Resources/Sounds/urgent_low.caf in Resources */ = {isa = PBXBuildFile; fileRef = CAF100000000000000000011 /* Trio/Resources/Sounds/urgent_low.caf */; };
+		CAF200000000000000000012 /* Trio/Resources/Sounds/luna_bark.caf in Resources */ = {isa = PBXBuildFile; fileRef = CAF100000000000000000012 /* Trio/Resources/Sounds/luna_bark.caf */; };
 		BD1179402F4E22C100F90001 /* ForecastedGlucoseEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD1179412F4E22C100F90001 /* ForecastedGlucoseEvaluator.swift */; };
 		BD1179522F4E22C100F90001 /* DayNightOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD1179512F4E22C100F90001 /* DayNightOptions.swift */; };
 		BD1179542F4E22C100F90001 /* GlucoseAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD1179532F4E22C100F90001 /* GlucoseAlert.swift */; };
@@ -1118,6 +1122,9 @@
 		5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaProposalView.swift; sourceTree = "<group>"; };
 		5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaHomeView.swift; sourceTree = "<group>"; };
 		5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSkin.swift; sourceTree = "<group>"; };
+		5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaReminders.swift; sourceTree = "<group>"; };
+		5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaCheers.swift; sourceTree = "<group>"; };
+		5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaLuna.swift; sourceTree = "<group>"; };
 		5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSensorSessionView.swift; sourceTree = "<group>"; };
 		5A5E4DC30CF513E76DFC4E3B /* SweetMirandaSensorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSensorSession.swift; sourceTree = "<group>"; };
 		10E61A0885164081B57C357C /* NightscoutUploadSerializer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightscoutUploadSerializer.swift; sourceTree = "<group>"; };
@@ -1568,6 +1575,7 @@
 		CAF10000000000000000000F /* Trio/Resources/Sounds/synth.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Trio/Resources/Sounds/synth.caf; sourceTree = SOURCE_ROOT; };
 		CAF100000000000000000010 /* Trio/Resources/Sounds/trill.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Trio/Resources/Sounds/trill.caf; sourceTree = SOURCE_ROOT; };
 		CAF100000000000000000011 /* Trio/Resources/Sounds/urgent_low.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Trio/Resources/Sounds/urgent_low.caf; sourceTree = SOURCE_ROOT; };
+		CAF100000000000000000012 /* Trio/Resources/Sounds/luna_bark.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Trio/Resources/Sounds/luna_bark.caf; sourceTree = SOURCE_ROOT; };
 		BD1179412F4E22C100F90001 /* ForecastedGlucoseEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastedGlucoseEvaluator.swift; sourceTree = "<group>"; };
 		BD1179512F4E22C100F90001 /* DayNightOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayNightOptions.swift; sourceTree = "<group>"; };
 		BD1179532F4E22C100F90001 /* GlucoseAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlucoseAlert.swift; sourceTree = "<group>"; };
@@ -2194,6 +2202,9 @@
 				5A5E9569778ECD865776B709 /* SweetMirandaProposalView.swift */,
 				5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */,
 				5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */,
+				5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */,
+				5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */,
+				5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */,
 				5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */,
 				5A5E4DC30CF513E76DFC4E3B /* SweetMirandaSensorSession.swift */,
 			);
@@ -2716,6 +2727,7 @@
 				CAF10000000000000000000F /* Trio/Resources/Sounds/synth.caf */,
 				CAF100000000000000000010 /* Trio/Resources/Sounds/trill.caf */,
 				CAF100000000000000000011 /* Trio/Resources/Sounds/urgent_low.caf */,
+				CAF100000000000000000012 /* Trio/Resources/Sounds/luna_bark.caf */,
 				3811DEC725C9DA7300A708ED /* Trio.entitlements */,
 				388E596425AD948E0019842D /* Info.plist */,
 				8A91342B2D63D9A2007F8874 /* InfoPlist.xcstrings */,
@@ -5094,6 +5106,7 @@
 				CAF20000000000000000000F /* Trio/Resources/Sounds/synth.caf in Resources */,
 				CAF200000000000000000010 /* Trio/Resources/Sounds/trill.caf in Resources */,
 				CAF200000000000000000011 /* Trio/Resources/Sounds/urgent_low.caf in Resources */,
+				CAF200000000000000000012 /* Trio/Resources/Sounds/luna_bark.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -5242,6 +5255,9 @@
 				5A5E1522F53682675CA39C6B /* SweetMirandaProposalView.swift in Sources */,
 				5A5E0A0886104404995F445A /* SweetMirandaHomeView.swift in Sources */,
 				5A5E2F355876760810EDBBA0 /* SweetMirandaSkin.swift in Sources */,
+				5A5E2F3558767608100REMD0 /* SweetMirandaReminders.swift in Sources */,
+				5A5E2F355876760810CHEER0 /* SweetMirandaCheers.swift in Sources */,
+				5A5E2F3558767608100LUNA0 /* SweetMirandaLuna.swift in Sources */,
 				5A5E95FA342E4E55421FA815 /* SweetMirandaSensorSessionView.swift in Sources */,
 				5A5E2EE079ECCD7AD82C4AC2 /* SweetMirandaSensorSession.swift in Sources */,
 				DD5DC9F12CF3D97C00AB8703 /* AdjustmentsStateModel+Overrides.swift in Sources */,
