@@ -1221,6 +1221,11 @@ extension SweetMiranda {
         let onHome: () -> Void
 
         @State private var typedCarbs = 0
+        /// What the field actually shows. Empty when the number is 0, so the grey "0" is a
+        /// placeholder she types over instead of a digit that stays in front of hers —
+        /// tapping in and typing 32 gave "032" (Wilson 2026-10-08). Trio's own fields already
+        /// do this (`TextFieldWithToolBar.isZeroCleared`); hers was a plain SwiftUI TextField.
+        @State private var typedText = ""
         @State private var counts: [String: Int] = [:]
         @State private var showCorrection = false
         @State private var search = ""
@@ -1311,27 +1316,39 @@ extension SweetMiranda {
                     .kerning(0.6)
                     .foregroundStyle(SweetMirandaPalette.muted)
                 HStack(spacing: 12) {
-                    stepButton("minus") { typedCarbs = max(0, typedCarbs - 5) }
+                    stepButton("minus") { setTyped(typedCarbs - 5) }
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        TextField("0", value: $typedCarbs, format: .number)
+                        TextField("0", text: $typedText)
                             .keyboardType(.numberPad)
                             .focused($typing)
                             .multilineTextAlignment(.center)
                             .font(.system(size: 44, weight: .heavy, design: .rounded))
                             .foregroundStyle(SweetMirandaPalette.text)
-                            .onChange(of: typedCarbs) { _, new in
-                                typedCarbs = min(max(0, new), Self.maxTyped)
+                            .onChange(of: typedText) { _, new in
+                                // Digits only, no leading zero to carry, capped at maxTyped.
+                                let digits = String(new.filter(\.isNumber).prefix(4))
+                                let value = min(Int(digits) ?? 0, Self.maxTyped)
+                                let shown = digits.isEmpty ? "" : String(value)
+                                if typedText != shown { typedText = shown }
+                                typedCarbs = value
                             }
                         Text("g")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(SweetMirandaPalette.muted)
                     }
                     .frame(maxWidth: .infinity)
-                    stepButton("plus") { typedCarbs = min(Self.maxTyped, typedCarbs + 5) }
+                    stepButton("plus") { setTyped(typedCarbs + 5) }
                 }
             }
             .padding(16)
             .background(SweetMirandaPalette.card, in: RoundedRectangle(cornerRadius: 24))
+        }
+
+        /// The one place the number changes from a button, so the field and the total never drift.
+        private func setTyped(_ value: Int) {
+            let v = min(max(0, value), Self.maxTyped)
+            typedCarbs = v
+            typedText = v == 0 ? "" : String(v)
         }
 
         private func stepButton(_ icon: String, action: @escaping () -> Void) -> some View {
