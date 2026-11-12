@@ -38,6 +38,8 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     @Injected() private var router: Router!
     @Injected() private var broadcaster: Broadcaster!
     @Injected() private var glucoseStorage: GlucoseStorage!
+    @Injected() private var overrideStorage: OverrideStorage!
+    @Injected() private var adjustmentManager: AdjustmentManager!
 
     @Published private(set) var pending: SMProposal?
     @Published private(set) var pendingLines: [SMChangeLine] = []
@@ -128,6 +130,12 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             guard let self else { return }
             Task { await self.nightscoutManager.uploadNoteTreatment(note: note) }
         }
+        // Activity Mode's notes ("Activity Mode on 45" / "off stopped" / "off 8-hour limit") are what
+        // let WilHQ show Luna running on the parents' loop screen while it is on.
+        SweetMirandaActivity.postNote = { [weak self] note in
+            guard let self else { return }
+            Task { await self.nightscoutManager.uploadNoteTreatment(note: note) }
+        }
 
         // Dream Mode resumes insulin on time. A paused pod stops loop cycles, so this rides on every
         // new G6 reading instead — it keeps arriving every 5 min with the phone locked.
@@ -135,6 +143,7 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
                 self?.tickDreamMode()
+                self?.tickActivityLimit()
                 self?.checkRollbackDeadline()
             }
             .store(in: &subscriptions)
@@ -177,8 +186,16 @@ final class BaseSweetMirandaSyncManager: SweetMirandaSyncManager, Injectable, Ob
     func applicationBecameActive() {
         checkNow()
         tickDreamMode()
+        tickActivityLimit()
         checkRollbackDeadline()
         Task { @MainActor in self.presentPendingIfNeeded() }
+    }
+
+    /// Activity Mode never runs past 8 hours. Rides on every G6 reading (phone locked or not), like Dream Mode.
+    private func tickActivityLimit() {
+        Task { @MainActor in
+            await SweetMirandaActivity.enforceLimit(storage: self.overrideStorage, manager: self.adjustmentManager)
+        }
     }
 
     private func tickDreamMode() {

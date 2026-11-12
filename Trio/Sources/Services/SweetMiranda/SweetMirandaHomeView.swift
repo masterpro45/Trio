@@ -29,6 +29,9 @@ extension SweetMiranda {
         /// Activity Mode: Trio's own override preset, found by name.
         @State private var modePresets: [SweetMirandaMode: SMModePreset] = [:]
         @State private var confirmMode: SweetMirandaMode?
+        /// Activity Mode's length wheel (15 min … 8 h); remembers her last pick.
+        @State private var pickActivity = false
+        @AppStorage("sweetMiranda.activity.lastMinutes") private var activityMinutes = 60
         @State private var modeMessage: String?
         @State private var modeBusy = false
         /// The mode button she is holding down (2 s starts it), and how far the fill has got.
@@ -54,6 +57,12 @@ extension SweetMiranda {
 
                 VStack(spacing: 0) {
                     header
+                    if let run = SweetMirandaActivity.running(state.overrides) {
+                        SweetMirandaActivityBanner(run: run)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 4)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     orbRow
                     if let nudge { nudgeBar(nudge) }
                     glucoseBlock
@@ -155,7 +164,22 @@ extension SweetMiranda {
                     }
                 }
             }
-            // After the 2-second hold: how long?
+            // After the 2-second hold: how long? Activity = wheel (15-min steps to 8 h); Dream = short list.
+            .sheet(isPresented: $pickActivity) {
+                SweetMirandaActivityLengthPicker(
+                    minutes: $activityMinutes,
+                    summary: modeSummary(.activity),
+                    onStart: { m in
+                        pickActivity = false
+                        startMode(.activity, minutes: m)
+                    },
+                    onCancel: { pickActivity = false }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(SweetMirandaPalette.ground)
+                .environment(\.colorScheme, .dark)
+            }
             .confirmationDialog(
                 confirmMode.map { "Start \($0.presetName) — for how long?" } ?? "",
                 isPresented: Binding(get: { confirmMode != nil }, set: { if !$0 { confirmMode = nil } }),
@@ -207,6 +231,9 @@ extension SweetMiranda {
             if active {
                 if mode == .dream, let back = dream.resumeAt {
                     return "No insulin · back \(back.formatted(date: .omitted, time: .shortened)) · tap to resume"
+                }
+                if mode == .activity, let run = SweetMirandaActivity.running(state.overrides) {
+                    return "ON · ends \(run.end.formatted(date: .omitted, time: .shortened)) · tap to stop"
                 }
                 return "ON · tap to stop"
             }
@@ -262,14 +289,14 @@ extension SweetMiranda {
                         holdingMode = nil
                         holdProgress = 0
                         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmMode = mode
+                        if mode == .activity { pickActivity = true } else { confirmMode = mode }
                     } onPressingChanged: { pressing in
                         holdingMode = pressing ? mode : nil
                         withAnimation(pressing ? .linear(duration: 2) : .easeOut(duration: 0.2)) {
                             holdProgress = pressing ? 1 : 0
                         }
                     }
-                    .accessibilityAction { confirmMode = mode }
+                    .accessibilityAction { if mode == .activity { pickActivity = true } else { confirmMode = mode } }
             }
         }
 
@@ -277,11 +304,11 @@ extension SweetMiranda {
             switch mode {
             case .activity:
                 guard let p = modePresets[.activity] else {
-                    return "Target \(SweetMirandaActivity.defaultTarget) mg/dL · insulin unchanged. Tap it again any time to stop."
+                    return "Target \(SweetMirandaActivity.defaultTarget) mg/dL · insulin unchanged. Ends by itself — 8 hours at most. Tap it again any time to stop."
                 }
                 var parts = ["Insulin \(Int(p.percentage.rounded()))%"]
                 if let t = p.target, t > 0 { parts.append("target \(t) mg/dL") }
-                return parts.joined(separator: " · ") + ". Tap it again any time to stop."
+                return parts.joined(separator: " · ") + ". Ends by itself — 8 hours at most. Tap it again any time to stop."
             case .dream:
                 return "Your pod gives NO insulin until the time is up — then insulin turns back on by itself. Tap Dream Mode any time to turn insulin back on sooner."
             }
@@ -297,6 +324,10 @@ extension SweetMiranda {
                         guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
                         let id = try await SweetMirandaActivity.prepare(resolver: resolver, minutes: minutes)
                         try await manager.activateOverride(.presetID(id), source: .app, waitForUpload: false)
+                        SweetMirandaActivity
+                            .note(
+                                "Activity Mode on \(min(max(minutes, SweetMirandaActivity.stepMinutes), SweetMirandaActivity.maxMinutes))"
+                            )
                         await loadModePresets()
                     case .dream:
                         guard let aps = resolver.resolve(APSManager.self) else { return }
@@ -317,6 +348,7 @@ extension SweetMiranda {
                     case .activity:
                         guard let manager = resolver.resolve(AdjustmentManager.self) else { return }
                         try await manager.cancelOverride(source: .app, waitForUpload: false)
+                        SweetMirandaActivity.note("Activity Mode off stopped")
                     case .dream:
                         guard let aps = resolver.resolve(APSManager.self) else { return }
                         try await dream.stop(apsManager: aps)
@@ -334,6 +366,9 @@ extension SweetMiranda {
         /// Foreground check every 30 s; in the background every new G6 reading does the same
         /// (`BaseSweetMirandaSyncManager`).
         private func tickDream() {
+            if let storage = resolver.resolve(OverrideStorage.self), let manager = resolver.resolve(AdjustmentManager.self) {
+                Task { @MainActor in await SweetMirandaActivity.enforceLimit(storage: storage, manager: manager) }
+            }
             guard dream.isOn, let aps = resolver.resolve(APSManager.self) else { return }
             Task { @MainActor in await dream.tick(apsManager: aps) }
         }
@@ -868,7 +903,9 @@ extension SweetMiranda {
                                 .foregroundStyle(SweetMirandaPalette.muted)
                         }
                     }
-                    .frame(height: 176)
+                    // Activity Mode's banner takes ~64 pt at the top; the chart gives back 40 of them so
+                    // nothing is pushed under the clock or off the bottom (390-pt phone, measured 11/11).
+                    .frame(height: SweetMirandaActivity.running(state.overrides) == nil ? 176 : 136)
                     .padding(.horizontal, 6)
                     .padding(.top, 12)
                     .padding(.bottom, 6)
@@ -1600,17 +1637,21 @@ enum SweetMirandaMode: String, CaseIterable, Identifiable, Hashable {
     var keywords: [String] { self == .activity ? ["activity", "sport", "exercise"] : [] }
     var icon: String { self == .activity ? "figure.run" : "moon.zzz.fill" }
     var tint: Color { self == .activity ? SweetMirandaPalette.mint : SweetMirandaPalette.lilac }
-    /// Minutes she can pick after the hold; 0 = until she stops it. Dream never runs past 2 h.
-    var choices: [Int] { self == .activity ? [60, 120, 240, 0] : SweetMirandaDreamMode.choices }
+    /// Minutes she can pick after the hold. Activity: every 15 min up to 8 h (wheel picker), and NO
+    /// "until I stop it" (Wilson 2026-11-11 — one left on for 23 days held her target at 150 around
+    /// the clock; he first said 3 h, then "do 8 hours, max").
+    /// Dream never runs past 2 h.
+    var choices: [Int] { self == .activity ? SweetMirandaActivity.choices : SweetMirandaDreamMode.choices }
 
     func matches(_ name: String) -> Bool { keywords.contains { name.localizedCaseInsensitiveContains($0) } }
 
     static func choiceLabel(_ minutes: Int) -> String {
-        switch minutes {
-        case 0: return "Until I stop it"
-        case ..<60: return "\(minutes) minutes"
-        case 60: return "1 hour"
-        default: return "\(minutes / 60) hours"
+        let h = minutes / 60, m = minutes % 60
+        switch (h, m) {
+        case (0, _): return "\(m) minutes"
+        case (1, 0): return "1 hour"
+        case (_, 0): return "\(h) hours"
+        default: return "\(h) h \(m) min"
         }
     }
 }
@@ -1622,16 +1663,28 @@ enum SweetMirandaActivity {
     /// Wilson 2026-09-27: target 150 mg/dL, insulin unchanged — like Omnipod 5 Activity.
     static let defaultTarget: Decimal = 150
 
-    /// Returns the preset id after writing the length she picked onto it (0 = until she stops it).
+    /// Activity Mode never runs longer than this (8 h) — not from her button, not from Trio's own
+    /// Adjustments screen, not from a remote. `enforceLimit` stops anything that tries.
+    static let maxMinutes = 480
+    static let stepMinutes = 15
+    static let choices = Array(stride(from: stepMinutes, through: maxMinutes, by: stepMinutes))
+
+    /// Posts a Nightscout note (set by `SweetMirandaSyncManager.start()`, which owns the uploader),
+    /// so WilHQ can show Luna running on the parents' loop screen while it is on.
+    static var postNote: ((String) -> Void)?
+    static func note(_ text: String) { postNote?("Sweet Miranda: \(text)") }
+
+    /// Returns the preset id after writing the length she picked onto it (15 min … 8 h, never open-ended).
     @MainActor static func prepare(resolver: Resolver, minutes: Int) async throws -> String {
+        let minutes = min(max(minutes, stepMinutes), maxMinutes)
         guard let storage = resolver.resolve(OverrideStorage.self) else { throw SMModeError.unavailable }
         if try await preset(storage) == nil {
             try await storage.storeOverride(override: Override(
                 name: SweetMirandaMode.activity.presetName,
                 enabled: false,
                 date: Date(),
-                duration: Decimal(minutes > 0 ? minutes : 60),
-                indefinite: minutes == 0,
+                duration: Decimal(minutes),
+                indefinite: false,
                 percentage: 100,
                 smbIsOff: false,
                 isPreset: true,
@@ -1650,11 +1703,55 @@ enum SweetMirandaActivity {
             ))
         }
         guard let row = try await preset(storage), let id = row.id else { throw SMModeError.unavailable }
-        row.indefinite = minutes == 0
-        if minutes > 0 { row.duration = NSDecimalNumber(value: minutes) }
+        row.indefinite = false
+        row.duration = NSDecimalNumber(value: minutes)
         let context = CoreDataStack.shared.persistentContainer.viewContext
         if context.hasChanges { try context.save() }
         return id
+    }
+
+    /// The Activity Mode running right now: when it started and when it ends (never past 8 h).
+    struct Running: Equatable {
+        let start: Date
+        let end: Date
+        /// The override as stored asks for longer than 8 h (or "until stopped").
+        let overLimit: Bool
+    }
+
+    @MainActor static func running(_ overrides: [OverrideStored]) -> Running? {
+        guard let o = overrides.first(where: { $0.enabled && SweetMirandaMode.activity.matches($0.name ?? "") }),
+              let start = o.date else { return nil }
+        let asked = o.indefinite ? Int.max : (o.duration?.intValue ?? Int.max)
+        let minutes = min(asked, maxMinutes)
+        return Running(start: start, end: start.addingTimeInterval(TimeInterval(minutes * 60)), overLimit: asked > maxMinutes)
+    }
+
+    private static var enforcing = false
+    private static var lastEnforce = Date.distantPast
+
+    /// Stops an Activity Mode that has run 8 hours, however it was started (her button, Trio's own
+    /// Adjustments screen, a remote, or an old "until I stop it" from before this build). One that
+    /// asked for ≤ 8 h is left alone — Trio ends it on time by itself. Safe to call as often as you
+    /// like; it only looks once a minute. It never starts anything and never touches a dose.
+    @MainActor static func enforceLimit(storage: OverrideStorage, manager: AdjustmentManager) async {
+        guard !enforcing, Date().timeIntervalSince(lastEnforce) > 55 else { return }
+        enforcing = true
+        lastEnforce = Date()
+        defer { enforcing = false }
+        guard let id = try? await storage.fetchLatestActiveOverride() else { return }
+        let context = CoreDataStack.shared.persistentContainer.viewContext
+        guard let o = try? context.existingObject(with: id) as? OverrideStored,
+              o.enabled, SweetMirandaMode.activity.matches(o.name ?? ""),
+              let start = o.date else { return }
+        let asked = o.indefinite ? Int.max : (o.duration?.intValue ?? Int.max)
+        guard asked > maxMinutes, Date().timeIntervalSince(start) >= TimeInterval(maxMinutes * 60) else { return }
+        do {
+            try await manager.cancelOverride(source: .app, waitForUpload: false)
+            debug(.apsManager, "SweetMiranda: Activity Mode stopped at its 8-hour limit (started \(start))")
+            note("Activity Mode off 8-hour limit")
+        } catch {
+            debug(.apsManager, "SweetMiranda: couldn't stop Activity Mode at its limit: \(error)")
+        }
     }
 
     @MainActor private static func preset(_ storage: OverrideStorage) async throws -> OverrideStored? {
@@ -1854,5 +1951,161 @@ struct SweetMirandaBubbleName: View {
         .shadow(color: SweetMirandaPalette.pink.opacity(0.55), radius: 10, y: 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(text))
+    }
+}
+
+// MARK: - Luna running = Activity Mode is on
+
+/// Wilson 2026-11-11: "a 3D animation of Luna running that shows activity mode … so this won't
+/// happen again." Sits at the top of her home screen whenever Activity Mode is on: Luna (the same
+/// 3D dog as the desktop pet, pre-rendered from its SceneKit model — 16 frames in `luna_run`)
+/// runs on a moving track, with when it ends and a bar that empties toward the end. Display only.
+struct SweetMirandaActivityBanner: View {
+    let run: SweetMirandaActivity.Running
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { ctx in
+            let now = ctx.date
+            let total = max(run.end.timeIntervalSince(run.start), 60)
+            let left = max(run.end.timeIntervalSince(now), 0)
+            HStack(spacing: 12) {
+                SweetMirandaLunaRunner(height: 46)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Activity Mode is on")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(SweetMirandaPalette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("Target 150 · ends \(run.end.formatted(date: .omitted, time: .shortened)) · \(Self.left(left))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(SweetMirandaPalette.ink.opacity(0.75))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(SweetMirandaPalette.ink.opacity(0.15))
+                            Capsule().fill(SweetMirandaPalette.ink.opacity(0.55))
+                                .frame(width: geo.size.width * CGFloat(left / total))
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(SweetMirandaPalette.mint)
+                    .shadow(color: SweetMirandaPalette.mint.opacity(0.55), radius: 10)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Activity Mode is on. Ends \(run.end.formatted(date: .omitted, time: .shortened))."))
+        }
+    }
+
+    static func left(_ seconds: TimeInterval) -> String {
+        let m = Int((seconds / 60).rounded(.up))
+        if m <= 0 { return "ending now" }
+        if m < 60 { return "\(m) min left" }
+        return m % 60 == 0 ? "\(m / 60) h left" : "\(m / 60) h \(m % 60) min left"
+    }
+}
+
+/// Luna running in place on a scrolling track. 16-frame sprite sheet `luna_run` (254×240 px per
+/// frame); Reduce Motion shows her standing still on the first frame.
+struct SweetMirandaLunaRunner: View {
+    var height: CGFloat = 58
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let frames = 16
+    private static let aspect: CGFloat = 254.0 / 240.0
+    /// Frames per second — one stride ≈ 0.7 s, a happy trot rather than a sprint.
+    private static let fps = 22.0
+
+    var body: some View {
+        let w = height * Self.aspect
+        TimelineView(.animation(minimumInterval: 1.0 / Self.fps, paused: reduceMotion)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let i = reduceMotion ? 0 : Int(t * Self.fps) % Self.frames
+            ZStack(alignment: .bottom) {
+                // the ground slides backwards under her
+                Canvas { g, size in
+                    let shift = reduceMotion ? 0 : CGFloat((t * 46).truncatingRemainder(dividingBy: 16))
+                    var x = -shift
+                    while x < size.width {
+                        g.fill(
+                            Path(roundedRect: CGRect(x: x, y: size.height - 3, width: 8, height: 2.5), cornerRadius: 1.2),
+                            with: .color(SweetMirandaPalette.ink.opacity(0.35))
+                        )
+                        x += 16
+                    }
+                }
+                Image("luna_run")
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: w * CGFloat(Self.frames), height: height)
+                    .offset(x: -CGFloat(i) * w)
+                    .frame(width: w, height: height, alignment: .leading)
+                    .clipped()
+            }
+            .frame(width: w + 8, height: height)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Activity Mode's "for how long?" — one wheel, 15 minutes to 8 hours in 15-minute steps, nothing
+/// open-ended (Wilson 2026-11-11). Remembers her last pick. Starting it is the only action here.
+struct SweetMirandaActivityLengthPicker: View {
+    @Binding var minutes: Int
+    let summary: String
+    let onStart: (Int) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                SweetMirandaLunaRunner(height: 46)
+                Text("Activity Mode — for how long?")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SweetMirandaPalette.mint)
+                Spacer(minLength: 0)
+            }
+            Picker("How long", selection: $minutes) {
+                ForEach(SweetMirandaActivity.choices, id: \.self) { m in
+                    Text(SweetMirandaMode.choiceLabel(m))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .tag(m)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(height: 140)
+            .onAppear {
+                if !SweetMirandaActivity.choices.contains(minutes) { minutes = 60 }
+            }
+            Text(summary)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(SweetMirandaPalette.muted)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 10) {
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(SweetMirandaPalette.muted.opacity(0.18)))
+                Button {
+                    onStart(minutes)
+                } label: {
+                    Text("Start · \(SweetMirandaMode.choiceLabel(minutes))")
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .foregroundStyle(SweetMirandaPalette.ink)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(SweetMirandaPalette.mint))
+                }
+            }
+        }
+        .padding(20)
+        .background(SweetMirandaPalette.ground.ignoresSafeArea())
     }
 }
