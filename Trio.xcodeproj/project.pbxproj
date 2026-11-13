@@ -14,6 +14,7 @@
 		5A5E0A0886104404995F445A /* SweetMirandaHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */; };
 		5A5E2F355876760810EDBBA0 /* SweetMirandaSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */; };
 		5A5E2F3558767608100REMD0 /* SweetMirandaReminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */; };
+		5A5E2F3558767608100STKG0 /* SweetMirandaStackGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D60STKG /* SweetMirandaStackGuard.swift */; };
 		5A5E2F355876760810CHEER0 /* SweetMirandaCheers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */; };
 		5A5E2F3558767608100LUNA0 /* SweetMirandaLuna.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */; };
 		5A5E95FA342E4E55421FA815 /* SweetMirandaSensorSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */; };
@@ -1123,6 +1124,7 @@
 		5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaHomeView.swift; sourceTree = "<group>"; };
 		5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSkin.swift; sourceTree = "<group>"; };
 		5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaReminders.swift; sourceTree = "<group>"; };
+		5A5E37D6E841CCB38D60STKG /* SweetMirandaStackGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaStackGuard.swift; sourceTree = "<group>"; };
 		5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaCheers.swift; sourceTree = "<group>"; };
 		5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaLuna.swift; sourceTree = "<group>"; };
 		5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetMirandaSensorSessionView.swift; sourceTree = "<group>"; };
@@ -2203,6 +2205,7 @@
 				5A5EF27DEB5CA606F14AC5C7 /* SweetMirandaHomeView.swift */,
 				5A5E37D6E841CCB38D6DA7C7 /* SweetMirandaSkin.swift */,
 				5A5E37D6E841CCB38D60REMD /* SweetMirandaReminders.swift */,
+				5A5E37D6E841CCB38D60STKG /* SweetMirandaStackGuard.swift */,
 				5A5E37D6E841CCB38D6CHEER /* SweetMirandaCheers.swift */,
 				5A5E37D6E841CCB38D60LUNA /* SweetMirandaLuna.swift */,
 				5A5EE60845D83CAFFC2BB7C7 /* SweetMirandaSensorSessionView.swift */,
@@ -5256,6 +5259,7 @@
 				5A5E0A0886104404995F445A /* SweetMirandaHomeView.swift in Sources */,
 				5A5E2F355876760810EDBBA0 /* SweetMirandaSkin.swift in Sources */,
 				5A5E2F3558767608100REMD0 /* SweetMirandaReminders.swift in Sources */,
+				5A5E2F3558767608100STKG0 /* SweetMirandaStackGuard.swift in Sources */,
 				5A5E2F355876760810CHEER0 /* SweetMirandaCheers.swift in Sources */,
 				5A5E2F3558767608100LUNA0 /* SweetMirandaLuna.swift in Sources */,
 				5A5E95FA342E4E55421FA815 /* SweetMirandaSensorSessionView.swift in Sources */,

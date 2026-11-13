@@ -529,6 +529,10 @@ extension Treatments {
         @State private var bolusHolding = false
         @State private var bolusHoldProgress: CGFloat = 0
         @State private var smBolusSkipAuth = false
+        // Sweet Miranda: "insulin already working" guard (SweetMirandaStackGuard, 2026-11-13).
+        @State private var smRecent = SweetMirandaStackGuard.Recent()
+        @State private var smStackHolding = false
+        @State private var smStackHoldProgress: CGFloat = 0
 
         private var bolusWarning: (shouldConfirm: Bool, warningMessage: String, color: Color) {
             let isGlucoseVeryLow = state.currentBG < 54
@@ -572,6 +576,10 @@ extension Treatments {
                         smTooLowRow
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    } else if smStack != .ok {
+                        smStackCard
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     } else {
                         smBolusHoldButton
                             .listRowBackground(Color.clear)
@@ -609,6 +617,11 @@ extension Treatments {
                         .foregroundColor(bolusWarning.color)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, -22)
+                }
+            }
+            .task {
+                if sweetMirandaSkin {
+                    smRecent = await SweetMirandaStackGuard.fetchRecentManual()
                 }
             }
             .glassActionSheet(
@@ -668,7 +681,7 @@ extension Treatments {
             .onLongPressGesture(minimumDuration: Self.smBolusHoldSeconds, maximumDistance: 40) {
                 bolusHolding = false
                 withAnimation(.easeOut(duration: 0.2)) { bolusHoldProgress = 0 }
-                guard !smBelow60 else {
+                guard !smBelow60, smStack == .ok else {
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                     return
                 }
@@ -686,6 +699,139 @@ extension Treatments {
                 }
             }
             .accessibilityLabel("Hold one second to give \(state.amount.description) units of insulin")
+        }
+
+        // MARK: Sweet Miranda — insulin already working
+
+        /// Trio's own numbers: its recommendation, its IOB, its forecast with the typed dose.
+        private var smStack: SweetMirandaStackGuard.Verdict {
+            SweetMirandaStackGuard.evaluate(.init(
+                amount: state.amount,
+                recommended: state.insulinCalculated,
+                iob: state.iob,
+                recentManualTotal: smRecent.total,
+                forecastLowest: state.units == .mgdL ? state.minPredBG : 0
+            ))
+        }
+
+        private static let smUnitsFormatter: NumberFormatter = {
+            let f = NumberFormatter()
+            f.numberStyle = .decimal
+            f.minimumFractionDigits = 0
+            f.maximumFractionDigits = 2
+            return f
+        }()
+
+        private func smU(_ d: Decimal) -> String {
+            Self.smUnitsFormatter.string(from: NSDecimalNumber(decimal: d)) ?? d.description
+        }
+
+        private var smRecentLine: String? {
+            guard let last = smRecent.last else { return nil }
+            let mins = max(0, Int(Date().timeIntervalSince(last) / 60))
+            let ago = mins < 60 ? "\(mins) min ago" : "\(mins / 60) h \(mins % 60) min ago"
+            return "Last bolus \(smU(smRecent.lastAmount)) U, \(ago)"
+        }
+
+        /// Replaces the hold button when she asks for more than Trio says while insulin is
+        /// already working. Primary: use Trio's amount. Secondary: a deliberate 3-second hold.
+        /// Blocked (Trio's forecast with this dose under 54): no way to give it here.
+        private var smStackCard: some View {
+            let blocked = smStack == .blocked
+            let rec = max(state.insulinCalculated, 0)
+            return VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "hourglass")
+                    Text("Insulin is already working")
+                        .font(.system(size: 19, weight: .heavy, design: .rounded))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    if state.iob >= 0.05 {
+                        Text("\(smU(state.iob)) U of insulin still working")
+                    }
+                    if let line = smRecentLine { Text(line) }
+                    Text("Trio says: \(smU(rec)) U more right now")
+                        .fontWeight(.bold)
+                    if state.units == .mgdL, state.minPredBG != 0 {
+                        Text(
+                            "With \(smU(state.amount)) U, Trio's forecast goes down to \(NSDecimalNumber(decimal: state.minPredBG).intValue)"
+                        )
+                    }
+                    Text("Give it time. Check again in 30 minutes.")
+                }
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+
+                Button {
+                    state.amount = rec
+                } label: {
+                    Text(rec > 0 ? "USE TRIO'S \(smU(rec)) U" : "DON'T BOLUS NOW")
+                        .font(.system(size: 19, weight: .heavy, design: .rounded))
+                        .foregroundStyle(SweetMirandaPalette.ink)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(SweetMirandaPalette.pink, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+
+                if blocked {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.raised.fill")
+                        Text("\(smU(state.amount)) U would take you too low. Ask Mom or Dad.")
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 8)
+                    .background(SweetMirandaPalette.red, in: RoundedRectangle(cornerRadius: 8))
+                } else {
+                    smStackOverrideButton
+                }
+            }
+            .foregroundStyle(.primary)
+            .padding(12)
+            .background(Color.orange.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.orange, lineWidth: 1.5))
+        }
+
+        /// The extra dose: a 3-second hold, then the usual confirm if Trio warns.
+        private var smStackOverrideButton: some View {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.orange, lineWidth: 2)
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.orange.opacity(0.35))
+                        .frame(width: geo.size.width * smStackHoldProgress)
+                }
+                Text(smStackHolding ? "Keep holding…" : "HOLD 3 SEC · GIVE \(smU(state.amount)) U ANYWAY")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(height: 44)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .onLongPressGesture(minimumDuration: SweetMirandaStackGuard.overrideHoldSeconds, maximumDistance: 40) {
+                smStackHolding = false
+                withAnimation(.easeOut(duration: 0.2)) { smStackHoldProgress = 0 }
+                guard !smBelow60, smStack == .stacking else {
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    return
+                }
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                if bolusWarning.shouldConfirm {
+                    smBolusSkipAuth = true
+                    showConfirmDialogForBolusing = true
+                } else {
+                    state.invokeTreatmentsTask(skipAuth: true)
+                }
+            } onPressingChanged: { pressing in
+                smStackHolding = pressing
+                withAnimation(
+                    pressing ? .linear(duration: SweetMirandaStackGuard.overrideHoldSeconds) :
+                        .easeOut(duration: 0.2)
+                ) {
+                    smStackHoldProgress = pressing ? 1 : 0
+                }
+            }
+            .accessibilityLabel("Hold three seconds to give \(smU(state.amount)) units anyway")
         }
 
         /// Shown in place of the bolus button when she's under 60.
