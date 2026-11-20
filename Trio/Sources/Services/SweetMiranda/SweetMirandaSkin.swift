@@ -53,6 +53,8 @@ enum SweetMirandaPalette {
     static let mint = Color(red: 0.239, green: 0.863, blue: 0.592) // #3DDC97
     static let amber = Color(red: 1.0, green: 0.761, blue: 0.278) // #FFC247
     static let red = Color(red: 1.0, green: 0.420, blue: 0.420) // #FF6B6B
+    /// Insulin given with NO carbs typed (diamond cap on the trace). Same hue as WilHQ's `--bolNc`.
+    static let sky = Color(red: 0.376, green: 0.647, blue: 0.980) // #60A5FA
 
     /// Ink for anything drawn on a pink or mint fill.
     static let ink = Color(red: 0.165, green: 0.039, blue: 0.094) // #2A0A18

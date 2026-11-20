@@ -747,18 +747,31 @@ extension SweetMiranda {
         /// One dose on the trace: a bolus she (or the loop) gave, or carbs she typed in.
         /// Display only — it reports what the pump already did and never computes a dose.
         private struct TraceDose: Identifiable {
-            enum Kind { case bolus, microBolus, carbs }
+            /// `bolus` = insulin with carbs typed beside it · `correction` = insulin with no carbs
+            /// (a correction, or a meal whose carbs were never typed) · `microBolus` = Trio's own SMB.
+            enum Kind { case bolus, correction, microBolus, carbs }
             let id: String
             let kind: Kind
             let at: Date
             let value: Double
         }
 
+        /// A bolus counts as "with carbs" when carbs were typed within this many seconds of it.
+        /// 🔁 MIRRORED in WilHQ sweetmiranda.html `withCarbs()` (±15 min) — change both or the two
+        /// graphs disagree. Measured 11/19: hand boluses with carbs land 0–5 min apart, none 5–20.
+        static let mealPairWindow: TimeInterval = 15 * 60
+
         /// Her boluses and micro-boluses in the same three hours the line covers, drawn the way
-        /// WilHQ draws them: pink bars for the insulin she gives, thinner lilac bars for Trio's
-        /// own micro-boluses, each labelled in units.
+        /// WilHQ draws them: pink bar + round cap = insulin with carbs, blue bar + diamond cap =
+        /// insulin with no carbs, thin lilac bars = Trio's own micro-boluses, each labelled in units.
         private func traceBoluses(since cutoff: Date) -> [TraceDose] {
-            state.insulinFromPersistence.compactMap { event in
+            // carbs from a little before the window too, so a bolus at the left edge still pairs
+            let carbTimes = state.carbsFromPersistence.compactMap { entry -> Date? in
+                guard !entry.isFPU, entry.carbs > 0, let at = entry.date,
+                      at >= cutoff.addingTimeInterval(-Self.mealPairWindow) else { return nil }
+                return at
+            }
+            return state.insulinFromPersistence.compactMap { event in
                 guard let bolus = event.bolus,
                       let at = event.timestamp, at >= cutoff
                 else { return nil }
@@ -766,7 +779,9 @@ extension SweetMiranda {
                 guard units > 0 else { return nil }
                 return TraceDose(
                     id: event.id ?? "\(at.timeIntervalSince1970)-bolus",
-                    kind: bolus.isSMB ? .microBolus : .bolus,
+                    kind: bolus.isSMB ? .microBolus
+                        : carbTimes.contains { abs($0.timeIntervalSince(at)) <= Self.mealPairWindow } ? .bolus
+                        : .correction,
                     at: at,
                     value: units
                 )
@@ -777,7 +792,7 @@ extension SweetMiranda {
         /// shape WilHQ uses, so her phone and the dashboard tell one story.
         private func traceCarbs(since cutoff: Date) -> [TraceDose] {
             state.carbsFromPersistence.compactMap { entry in
-                guard let at = entry.date, at >= cutoff, entry.carbs > 0 else { return nil }
+                guard let at = entry.date, at >= cutoff, entry.carbs > 0, !entry.isFPU else { return nil }
                 return TraceDose(
                     id: entry.id?.uuidString ?? "\(at.timeIntervalSince1970)-carb",
                     kind: .carbs,
@@ -843,9 +858,12 @@ extension SweetMiranda {
                             )
                         }
 
-                        // every bolus: a bar up from the lane floor, tallest = the biggest dose
+                        // every bolus: a bar up from the lane floor, tallest = the biggest dose.
+                        // Insulin she gives also wears a cap — round = carbs typed with it, diamond = no carbs —
+                        // so the two read apart by shape as well as colour (same marks as WilHQ's trace).
                         ForEach(boluses) { dose in
                             let micro = dose.kind == .microBolus
+                            let tint = doseTint(dose.kind)
                             BarMark(
                                 x: .value("time", dose.at, unit: .second),
                                 yStart: .value("from", lane.floor),
@@ -853,18 +871,23 @@ extension SweetMiranda {
                                 width: .fixed(micro ? 4 : 7)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 2))
-                            .foregroundStyle(micro ? SweetMirandaPalette.lilac : SweetMirandaPalette.pink)
+                            .foregroundStyle(tint)
                             .annotation(position: .top, spacing: 1) {
-                                if dose.value >= (micro ? 0.3 : 0.25) {
-                                    Text(
-                                        dose.value < 1 ? String(format: "%.2f", dose.value)
-                                            : String(format: "%.1f", dose.value)
-                                    )
-                                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                                    .foregroundStyle(
-                                        micro ? SweetMirandaPalette.lilac : SweetMirandaPalette.pink
-                                    )
-                                }
+                                if micro, dose.value >= 0.3 { doseLabel(dose.value, tint) }
+                            }
+                        }
+
+                        ForEach(boluses.filter { $0.kind != .microBolus }) { dose in
+                            let tint = doseTint(dose.kind)
+                            PointMark(
+                                x: .value("time", dose.at, unit: .second),
+                                y: .value("cap", lane.capY(for: dose.value))
+                            )
+                            .symbol(dose.kind == .bolus ? .circle : .diamond)
+                            .symbolSize(dose.kind == .bolus ? 70 : 85)
+                            .foregroundStyle(tint)
+                            .annotation(position: .top, spacing: 0) {
+                                if dose.value >= 0.25 { doseLabel(dose.value, tint) }
                             }
                         }
 
@@ -926,13 +949,15 @@ extension SweetMiranda {
         /// What each mark on the trace means, in her words. Only names what is actually there.
         private func doseKey(boluses: [TraceDose], carbs: [TraceDose]) -> some View {
             let hasBolus = boluses.contains { $0.kind == .bolus }
+            let hasCorrection = boluses.contains { $0.kind == .correction }
             let hasMicro = boluses.contains { $0.kind == .microBolus }
 
-            return HStack(spacing: 12) {
-                if hasBolus { keyChip("Insulin", SweetMirandaPalette.pink) }
+            return HStack(spacing: 10) {
+                if hasBolus { keyChip("With carbs", SweetMirandaPalette.pink, cap: .circle) }
+                if hasCorrection { keyChip("No carbs", SweetMirandaPalette.sky, cap: .diamond) }
                 if hasMicro { keyChip("Trio's drops", SweetMirandaPalette.lilac) }
                 if !carbs.isEmpty { keyChip("Carbs", SweetMirandaPalette.amber) }
-                if !hasBolus, !hasMicro, carbs.isEmpty {
+                if !hasBolus, !hasCorrection, !hasMicro, carbs.isEmpty {
                     Text("No insulin or carbs in the last 3 hours")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(SweetMirandaPalette.muted)
@@ -943,15 +968,42 @@ extension SweetMiranda {
             .padding(.bottom, 12)
         }
 
-        private func keyChip(_ label: String, _ tint: Color) -> some View {
+        private enum KeyCap { case none, circle, diamond }
+
+        /// The key's swatch draws the same shape as the mark on the trace: a bar, with the cap on top.
+        private func keyChip(_ label: String, _ tint: Color, cap: KeyCap = .none) -> some View {
             HStack(spacing: 5) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(tint)
-                    .frame(width: 7, height: 11)
+                VStack(spacing: 1) {
+                    switch cap {
+                    case .circle: Circle().fill(tint).frame(width: 6, height: 6)
+                    case .diamond: Rectangle().fill(tint).frame(width: 5, height: 5).rotationEffect(.degrees(45))
+                        .frame(width: 7, height: 7)
+                    case .none: EmptyView()
+                    }
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(tint)
+                        .frame(width: 7, height: cap == .none ? 11 : 8)
+                }
                 Text(label)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(SweetMirandaPalette.muted)
             }
+        }
+
+        private func doseTint(_ kind: TraceDose.Kind) -> Color {
+            switch kind {
+            case .bolus: return SweetMirandaPalette.pink
+            case .correction: return SweetMirandaPalette.sky
+            case .microBolus: return SweetMirandaPalette.lilac
+            case .carbs: return SweetMirandaPalette.amber
+            }
+        }
+
+        private func doseLabel(_ units: Double, _ tint: Color) -> some View {
+            Text(units < 1 ? String(format: "%.2f", units) : String(format: "%.1f", units))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
+                .fixedSize()
         }
 
         /// The bottom quarter of the chart is the dose lane, so the bars never cross her line.
@@ -967,7 +1019,13 @@ extension SweetMiranda {
             func height(for units: Double) -> Int {
                 let span = Double(top - floor)
                 let frac = biggest > 0 ? min(1, (units / biggest).squareRoot()) : 0
-                return floor + max(Int((span * 0.16).rounded()), Int((span * 0.84 * frac).rounded()))
+                // 0.72 (was 0.84) leaves headroom for the round / diamond cap and its label
+                return floor + max(Int((span * 0.16).rounded()), Int((span * 0.72 * frac).rounded()))
+            }
+
+            /// Where the cap sits: just above the bar's top.
+            func capY(for units: Double) -> Int {
+                height(for: units) + max(3, Int((Double(top - floor) * 0.1).rounded()))
             }
         }
 
